@@ -1,10 +1,5 @@
-import { HfInference } from "@huggingface/inference";
-
-// HF_TOKENが未設定でも無料枠でアクセス可能（レート制限あり）
-const hf = new HfInference(process.env.HF_TOKEN ?? "");
-
-// 無料で使える高品質モデル
-const IMAGE_MODEL = "black-forest-labs/FLUX.1-schnell";
+// Pollinations.ai — 完全無料・APIキー不要・FLUX.1モデル使用
+const POLLINATIONS_BASE = "https://image.pollinations.ai/prompt";
 
 interface GeneratedImage {
   data: Buffer;
@@ -18,25 +13,17 @@ export async function generateImage(params: {
 }): Promise<GeneratedImage[]> {
   const { prompt, width = 1024, height = 1024 } = params;
 
-  const result = await hf.textToImage({
-    model: IMAGE_MODEL,
-    inputs: prompt,
-    parameters: {
-      width,
-      height,
-      num_inference_steps: 4,
-    },
-  });
+  const url = `${POLLINATIONS_BASE}/${encodeURIComponent(prompt)}?width=${width}&height=${height}&model=flux&nologo=true&enhance=false`;
 
-  // HfInference.textToImage は Blob を返す
-  const blob = result as unknown as Blob;
-  const arrayBuffer = await blob.arrayBuffer();
-  return [
-    {
-      data: Buffer.from(arrayBuffer),
-      mimeType: (blob as Blob).type || "image/jpeg",
-    },
-  ];
+  const response = await fetch(url, { signal: AbortSignal.timeout(120_000) });
+  if (!response.ok) {
+    throw new Error(`Pollinations API error: ${response.status}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const contentType = response.headers.get("content-type") || "image/jpeg";
+
+  return [{ data: Buffer.from(arrayBuffer), mimeType: contentType }];
 }
 
 // アスペクト比 → 解像度マップ
@@ -56,11 +43,10 @@ export function ratioToSize(
     "21:9": [21, 9],
   };
   const [rw, rh] = ratioMap[aspectRatio] ?? [1, 1];
-  const width = Math.round(baseSize * Math.sqrt(rw / rh) / 64) * 64;
+  const width  = Math.round(baseSize * Math.sqrt(rw / rh) / 64) * 64;
   const height = Math.round(baseSize * Math.sqrt(rh / rw) / 64) * 64;
-  // FLUX.1-schnell は最大1024x1024程度が安定
   return {
-    width: Math.min(width, 1344),
+    width:  Math.min(width,  1344),
     height: Math.min(height, 1344),
   };
 }

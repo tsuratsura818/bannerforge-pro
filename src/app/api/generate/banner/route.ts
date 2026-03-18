@@ -72,19 +72,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid parameters", details: error.issues }, { status: 400 });
     }
     console.error("Banner generation error:", error);
-    const msg = error instanceof Error ? error.message : "";
-    if (msg.includes("loading") || msg.includes("503")) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("TimeoutError") || msg.includes("timeout") || msg.includes("abort")) {
       return NextResponse.json(
-        { error: "AIモデルを起動中です（初回は30秒ほどかかります）。しばらく待ってから再試行してください。" },
+        { error: "画像生成がタイムアウトしました。もう一度お試しください。" },
+        { status: 504 }
+      );
+    }
+    if (msg.includes("503") || msg.includes("loading")) {
+      return NextResponse.json(
+        { error: "AIサーバーが起動中です。しばらく待ってから再試行してください。" },
         { status: 503 }
       );
     }
-    if (msg.includes("rate") || msg.includes("429")) {
+    if (msg.includes("429") || msg.includes("rate")) {
       return NextResponse.json(
         { error: "リクエストが多すぎます。少し待ってから再試行してください。" },
         { status: 429 }
       );
     }
-    return NextResponse.json({ error: "画像生成に失敗しました。プロンプトを変えて再試行してください。" }, { status: 500 });
+    return NextResponse.json({ error: `画像生成に失敗しました。再試行してください。` }, { status: 500 });
   }
 }
