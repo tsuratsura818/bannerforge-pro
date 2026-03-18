@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "src/app/api/generate/banner/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/edit/remove-bg/route.ts": {
+      "maxDuration": 60
+    },
+    "src/app/api/edit/replace-bg/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}
