@@ -3,6 +3,8 @@ import { generateImage, ratioToSize } from "@/lib/huggingface";
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
 
+export const maxDuration = 60;
+
 const RequestSchema = z.object({
   prompt: z.string().min(1).max(2000),
   aspectRatio: z.string().default("1:1"),

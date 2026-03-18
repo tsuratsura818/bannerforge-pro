@@ -11,6 +11,11 @@
   --color-accent-light: #2d2d52;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   @apply bg-white text-gray-900;
 }
