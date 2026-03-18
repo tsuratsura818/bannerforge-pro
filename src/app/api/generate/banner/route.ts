@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { generateImage } from "@/lib/gemini";
+import { generateImage, ratioToSize } from "@/lib/huggingface";
 import { createClient } from "@/lib/supabase/server";
 import { z } from "zod";
 
@@ -24,24 +24,12 @@ export async function POST(request: Request) {
     const body = await request.json();
     const params = RequestSchema.parse(body);
 
-    // クォータチェック
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("used_this_month, monthly_quota")
-      .eq("id", user.id)
-      .single();
-
-    if (profile && profile.used_this_month >= profile.monthly_quota) {
-      return NextResponse.json(
-        { error: "月間クォータを超過しました。プランをアップグレードしてください。" },
-        { status: 429 }
-      );
-    }
+    const { width, height } = ratioToSize(params.aspectRatio, params.resolution);
 
     const images = await generateImage({
       prompt: params.prompt,
-      aspectRatio: params.aspectRatio,
-      resolution: params.resolution,
+      width,
+      height,
     });
 
     if (images.length === 0) {
@@ -50,7 +38,8 @@ export async function POST(request: Request) {
 
     const uploadedUrls: string[] = [];
     for (let i = 0; i < images.length; i++) {
-      const filename = `${user.id}/${Date.now()}_${i}.png`;
+      const ext = images[i].mimeType.includes("png") ? "png" : "jpg";
+      const filename = `${user.id}/${Date.now()}_${i}.${ext}`;
       const { data } = await supabase.storage
         .from("generations")
         .upload(filename, images[i].data, { contentType: images[i].mimeType });
@@ -65,38 +54,34 @@ export async function POST(request: Request) {
 
     const processingTime = Date.now() - startTime;
 
-    // 生成履歴を保存
     await supabase.from("generations").insert({
       user_id: user.id,
       prompt: params.prompt,
       params: { style: params.style, aspectRatio: params.aspectRatio, resolution: params.resolution },
       output_images: uploadedUrls,
-      model: "gemini-3.1-flash-image-preview",
+      model: "FLUX.1-schnell",
       resolution: params.resolution,
       aspect_ratio: params.aspectRatio,
       generation_type: "generate",
       processing_time_ms: processingTime,
     });
 
-    // クォータを更新
-    await supabase
-      .from("profiles")
-      .update({ used_this_month: (profile?.used_this_month ?? 0) + 1 })
-      .eq("id", user.id);
-
-    return NextResponse.json({
-      images: uploadedUrls,
-      processingTime,
-    });
+    return NextResponse.json({ images: uploadedUrls, processingTime });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: "Invalid parameters", details: error.issues }, { status: 400 });
     }
     console.error("Banner generation error:", error);
     const msg = error instanceof Error ? error.message : "";
-    if (msg.includes("RESOURCE_EXHAUSTED") || msg.includes("quota")) {
+    if (msg.includes("loading") || msg.includes("503")) {
       return NextResponse.json(
-        { error: "Gemini APIの利用上限に達しました。Google AI Studioで課金を有効にしてください。" },
+        { error: "AIモデルを起動中です（初回は30秒ほどかかります）。しばらく待ってから再試行してください。" },
+        { status: 503 }
+      );
+    }
+    if (msg.includes("rate") || msg.includes("429")) {
+      return NextResponse.json(
+        { error: "リクエストが多すぎます。少し待ってから再試行してください。" },
         { status: 429 }
       );
     }
