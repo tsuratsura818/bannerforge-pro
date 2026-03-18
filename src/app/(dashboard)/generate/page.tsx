@@ -5,7 +5,7 @@ import { TemplateSelector } from "@/components/banner/TemplateSelector";
 import { PromptInput } from "@/components/banner/PromptInput";
 import { ParamsPanel } from "@/components/banner/ParamsPanel";
 import { PreviewGrid } from "@/components/banner/PreviewGrid";
-import { ImageUploader } from "@/components/editor/ImageUploader";
+import { ReferenceImageUploader } from "@/components/editor/ReferenceImageUploader";
 import { Wand2, ChevronDown, ChevronUp } from "lucide-react";
 import type { BannerStyle, AspectRatio, Resolution } from "@/types/generation";
 
@@ -15,6 +15,7 @@ export default function GeneratePage() {
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("1:1");
   const [resolution, setResolution] = useState<Resolution>("1K");
   const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
+  const [referencePreviews, setReferencePreviews] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -53,18 +54,18 @@ export default function GeneratePage() {
 
       <div className="flex-1 grid lg:grid-cols-2 gap-6 min-h-0">
         {/* 左カラム: 設定パネル */}
-        <div className="space-y-5 overflow-y-auto pr-1">
+        <div className="space-y-3 overflow-y-auto pr-1">
           {/* テンプレート */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div className="bg-[#0f0f1e] rounded-xl border border-white/10 overflow-hidden">
             <button
               onClick={() => setShowTemplates(!showTemplates)}
-              className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+              className="w-full flex items-center justify-between p-4 text-left hover:bg-white/5 transition"
             >
-              <span className="font-semibold text-gray-900 dark:text-white text-sm">テンプレート</span>
-              {showTemplates ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              <span className="font-semibold text-white text-sm">テンプレート</span>
+              {showTemplates ? <ChevronUp className="w-4 h-4 text-white/50" /> : <ChevronDown className="w-4 h-4 text-white/50" />}
             </button>
             {showTemplates && (
-              <div className="p-4 border-t border-gray-200 dark:border-gray-800">
+              <div className="p-4 border-t border-white/10">
                 <TemplateSelector
                   onSelect={(tmpl) => setPrompt(tmpl)}
                 />
@@ -73,14 +74,14 @@ export default function GeneratePage() {
           </div>
 
           {/* プロンプト */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-3">
-            <h3 className="font-semibold text-gray-900 dark:text-white text-sm">プロンプト</h3>
+          <div className="bg-[#0f0f1e] rounded-xl border border-white/10 p-4 space-y-3">
+            <h3 className="font-semibold text-white text-sm">プロンプト</h3>
             <PromptInput value={prompt} onChange={setPrompt} style={style} />
           </div>
 
           {/* パラメーター */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
-            <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-4">スタイル・解像度</h3>
+          <div className="bg-[#0f0f1e] rounded-xl border border-white/10 p-4">
+            <h3 className="font-semibold text-white text-sm mb-4">スタイル・解像度</h3>
             <ParamsPanel
               style={style}
               aspectRatio={aspectRatio}
@@ -92,21 +93,30 @@ export default function GeneratePage() {
           </div>
 
           {/* 参照画像 */}
-          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-3">
-            <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
-              参照画像（オプション）
+          <div className="bg-[#0f0f1e] rounded-xl border border-white/10 p-4 space-y-3">
+            <h3 className="font-semibold text-white text-sm">
+              参照画像
+              <span className="ml-2 text-xs font-normal text-white/40">オプション</span>
             </h3>
-            <ImageUploader
-              onUpload={(file) => setReferenceFiles((prev) => [...prev, file].slice(0, 14))}
-              label="参照画像をドロップ（最大14枚）"
+            <ReferenceImageUploader
+              files={referenceFiles}
+              previews={referencePreviews}
+              onAdd={(file, preview) => {
+                setReferenceFiles((prev) => [...prev, file].slice(0, 14));
+                setReferencePreviews((prev) => [...prev, preview].slice(0, 14));
+              }}
+              onRemove={(index) => {
+                setReferenceFiles((prev) => prev.filter((_, i) => i !== index));
+                setReferencePreviews((prev) => {
+                  URL.revokeObjectURL(prev[index]);
+                  return prev.filter((_, i) => i !== index);
+                });
+              }}
             />
-            {referenceFiles.length > 0 && (
-              <p className="text-xs text-gray-500">{referenceFiles.length}枚の参照画像</p>
-            )}
           </div>
 
           {error && (
-            <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-4 py-3 rounded-lg">
+            <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 px-4 py-3 rounded-lg">
               {error}
             </p>
           )}
@@ -114,10 +124,10 @@ export default function GeneratePage() {
           <button
             onClick={handleGenerate}
             disabled={isGenerating || !prompt.trim()}
-            className="w-full py-3.5 bg-[#1A1A2E] text-white rounded-xl font-semibold hover:bg-[#2d2d52] disabled:opacity-50 transition flex items-center justify-center gap-2"
+            className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-bold text-base transition-all shadow-lg shadow-blue-900/30 flex items-center justify-center gap-2"
           >
             <Wand2 className="w-5 h-5" />
-            {isGenerating ? "生成中..." : "生成する"}
+            {isGenerating ? "AI が生成中..." : "画像を生成する"}
           </button>
         </div>
 

@@ -21,11 +21,11 @@ const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
   { value: "4:5", label: "4:5" },
 ];
 
-const RESOLUTIONS: { value: Resolution; label: string }[] = [
-  { value: "512", label: "プレビュー (512px)" },
-  { value: "1K", label: "標準 (1K)" },
-  { value: "2K", label: "高解像度 (2K)" },
-  { value: "4K", label: "超高解像度 (4K)" },
+const RESOLUTIONS: { value: Resolution; label: string; desc: string }[] = [
+  { value: "512", label: "プレビュー", desc: "512px" },
+  { value: "1K", label: "標準", desc: "1K" },
+  { value: "2K", label: "高解像度", desc: "2K" },
+  { value: "4K", label: "超高解像度", desc: "4K" },
 ];
 
 interface ParamsPanelProps {
@@ -46,9 +46,9 @@ export function ParamsPanel({
   onResolutionChange,
 }: ParamsPanelProps) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div>
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+        <label className="block text-xs font-semibold text-white/40 uppercase tracking-widest mb-2">
           スタイル
         </label>
         <div className="grid grid-cols-2 gap-1.5">
@@ -56,10 +56,10 @@ export function ParamsPanel({
             <button
               key={value}
               onClick={() => onStyleChange(value)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition text-center ${
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition text-center border ${
                 style === value
-                  ? "bg-[#1A1A2E] text-white"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  ? "bg-white text-[#1A1A2E] border-white"
+                  : "bg-white/5 text-white/70 border-white/10 hover:bg-white/10 hover:text-white"
               }`}
             >
               {label}
@@ -69,7 +69,7 @@ export function ParamsPanel({
       </div>
 
       <div>
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+        <label className="block text-xs font-semibold text-white/40 uppercase tracking-widest mb-2">
           アスペクト比
         </label>
         <div className="flex flex-wrap gap-1.5">
@@ -77,10 +77,10 @@ export function ParamsPanel({
             <button
               key={value}
               onClick={() => onAspectRatioChange(value)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-mono font-medium transition ${
+              className={`px-3 py-1.5 rounded-lg text-sm font-mono font-medium transition border ${
                 aspectRatio === value
-                  ? "bg-[#1A1A2E] text-white"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200"
+                  ? "bg-white text-[#1A1A2E] border-white"
+                  : "bg-white/5 text-white/70 border-white/10 hover:bg-white/10 hover:text-white"
               }`}
             >
               {label}
@@ -90,21 +90,24 @@ export function ParamsPanel({
       </div>
 
       <div>
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+        <label className="block text-xs font-semibold text-white/40 uppercase tracking-widest mb-2">
           解像度
         </label>
-        <div className="space-y-1.5">
-          {RESOLUTIONS.map(({ value, label }) => (
+        <div className="grid grid-cols-2 gap-1.5">
+          {RESOLUTIONS.map(({ value, label, desc }) => (
             <button
               key={value}
               onClick={() => onResolutionChange(value)}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition ${
+              className={`px-3 py-2 rounded-lg text-sm transition border text-left ${
                 resolution === value
-                  ? "bg-[#1A1A2E] text-white"
-                  : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200"
+                  ? "bg-white text-[#1A1A2E] border-white"
+                  : "bg-white/5 text-white/70 border-white/10 hover:bg-white/10 hover:text-white"
               }`}
             >
-              {label}
+              <span className="font-medium">{label}</span>
+              <span className={`ml-1.5 text-xs ${resolution === value ? "text-[#1A1A2E]/60" : "text-white/30"}`}>
+                {desc}
+              </span>
             </button>
           ))}
         </div>

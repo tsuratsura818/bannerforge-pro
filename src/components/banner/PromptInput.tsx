@@ -17,6 +17,8 @@ const EXAMPLES = [
   "週末限定キャンペーン 今すぐチェック",
 ];
 
+const INPUT_BASE = "w-full px-3 py-2.5 rounded-lg bg-white/8 border border-white/15 text-white text-sm placeholder-white/30 focus:outline-none focus:border-white/40 focus:bg-white/10 transition";
+
 export function PromptInput({ value, onChange, style }: PromptInputProps) {
   const [catchcopy, setCatchcopy] = useState("");
   const [subText, setSubText] = useState("");
@@ -30,16 +32,24 @@ export function PromptInput({ value, onChange, style }: PromptInputProps) {
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-2 text-sm">
+      <div className="flex gap-1 p-1 bg-white/5 rounded-lg">
         <button
           onClick={() => setMode("simple")}
-          className={`px-3 py-1 rounded-full transition ${mode === "simple" ? "bg-[#1A1A2E] text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"}`}
+          className={`flex-1 py-1.5 text-sm font-medium rounded-md transition ${
+            mode === "simple"
+              ? "bg-white text-[#1A1A2E]"
+              : "text-white/50 hover:text-white"
+          }`}
         >
           シンプル
         </button>
         <button
           onClick={() => setMode("advanced")}
-          className={`px-3 py-1 rounded-full transition ${mode === "advanced" ? "bg-[#1A1A2E] text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"}`}
+          className={`flex-1 py-1.5 text-sm font-medium rounded-md transition ${
+            mode === "advanced"
+              ? "bg-white text-[#1A1A2E]"
+              : "text-white/50 hover:text-white"
+          }`}
         >
           詳細設定
         </button>
@@ -52,41 +62,52 @@ export function PromptInput({ value, onChange, style }: PromptInputProps) {
             value={catchcopy}
             onChange={(e) => setCatchcopy(e.target.value)}
             placeholder="キャッチコピー（例: 夏のセール 最大50%OFF）"
-            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+            className={INPUT_BASE}
           />
           <input
             type="text"
             value={subText}
             onChange={(e) => setSubText(e.target.value)}
             placeholder="サブテキスト（オプション）"
-            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm"
+            className={INPUT_BASE}
           />
-          <button
-            onClick={applyBuilderPrompt}
-            className="flex items-center gap-1.5 text-xs text-[#1A1A2E] dark:text-blue-400 hover:underline"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            プロンプトを自動生成
-          </button>
-          <div className="flex flex-wrap gap-1 mt-1">
-            {EXAMPLES.map((ex) => (
-              <button
-                key={ex}
-                onClick={() => setCatchcopy(ex)}
-                className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-800 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition"
-              >
-                {ex}
-              </button>
-            ))}
+          <div className="flex items-center justify-between">
+            <div className="flex flex-wrap gap-1">
+              {EXAMPLES.map((ex) => (
+                <button
+                  key={ex}
+                  onClick={() => setCatchcopy(ex)}
+                  className="text-xs px-2 py-0.5 bg-white/8 border border-white/10 text-white/50 rounded hover:bg-white/15 hover:text-white/80 transition"
+                >
+                  {ex}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={applyBuilderPrompt}
+              disabled={!catchcopy}
+              className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 disabled:opacity-30 transition shrink-0 ml-2"
+            >
+              <Sparkles className="w-3 h-3" />
+              生成
+            </button>
           </div>
+
+          {/* プレビュー */}
+          {value && (
+            <div className="p-2.5 bg-white/5 border border-white/10 rounded-lg">
+              <p className="text-xs text-white/40 mb-1">生成されたプロンプト</p>
+              <p className="text-xs text-white/70 leading-relaxed line-clamp-4">{value}</p>
+            </div>
+          )}
         </div>
       ) : (
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="バナーの詳細な指示を入力してください..."
-          rows={6}
-          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-sm resize-none"
+          rows={7}
+          className={`${INPUT_BASE} resize-none`}
         />
       )}
     </div>
