@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "**.supabase.com",
       },
+      {
+        protocol: "https",
+        hostname: "image.pollinations.ai",
+      },
     ],
   },
 };

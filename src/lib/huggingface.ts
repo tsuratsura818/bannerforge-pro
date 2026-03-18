@@ -1,31 +1,3 @@
-// Pollinations.ai — 完全無料・APIキー不要・FLUX.1モデル使用
-const POLLINATIONS_BASE = "https://image.pollinations.ai/prompt";
-
-interface GeneratedImage {
-  data: Buffer;
-  mimeType: string;
-}
-
-export async function generateImage(params: {
-  prompt: string;
-  width?: number;
-  height?: number;
-}): Promise<GeneratedImage[]> {
-  const { prompt, width = 1024, height = 1024 } = params;
-
-  const url = `${POLLINATIONS_BASE}/${encodeURIComponent(prompt)}?width=${width}&height=${height}&model=flux&nologo=true&enhance=false`;
-
-  const response = await fetch(url, { signal: AbortSignal.timeout(120_000) });
-  if (!response.ok) {
-    throw new Error(`Pollinations API error: ${response.status}`);
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
-  const contentType = response.headers.get("content-type") || "image/jpeg";
-
-  return [{ data: Buffer.from(arrayBuffer), mimeType: contentType }];
-}
-
 // アスペクト比 → 解像度マップ
 export function ratioToSize(
   aspectRatio: string,
@@ -49,4 +21,18 @@ export function ratioToSize(
     width:  Math.min(width,  1344),
     height: Math.min(height, 1344),
   };
+}
+
+// Pollinations.ai URL を構築（クライアントサイドで直接呼び出し可能）
+export function buildPollinationsUrl(
+  prompt: string,
+  width: number,
+  height: number,
+  seed?: number
+): string {
+  const s = seed ?? Math.floor(Math.random() * 999999);
+  return (
+    `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}` +
+    `?width=${width}&height=${height}&model=flux&nologo=true&seed=${s}`
+  );
 }

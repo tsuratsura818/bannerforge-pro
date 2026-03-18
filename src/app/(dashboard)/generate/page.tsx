@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { TemplateSelector } from "@/components/banner/TemplateSelector";
 import { PromptInput } from "@/components/banner/PromptInput";
 import { ParamsPanel } from "@/components/banner/ParamsPanel";
 import { PreviewGrid } from "@/components/banner/PreviewGrid";
 import { ReferenceImageUploader } from "@/components/editor/ReferenceImageUploader";
 import { Wand2, ChevronDown, ChevronUp } from "lucide-react";
+import { ratioToSize, buildPollinationsUrl } from "@/lib/huggingface";
 import type { BannerStyle, AspectRatio, Resolution } from "@/types/generation";
 
 export default function GeneratePage() {
@@ -21,32 +22,58 @@ export default function GeneratePage() {
   const [showTemplates, setShowTemplates] = useState(false);
   const [error, setError] = useState("");
 
-  const handleGenerate = useCallback(async () => {
+  // ブラウザが直接ロードする隠し画像のURL
+  const [pendingUrl, setPendingUrl] = useState("");
+  const pendingUrlRef = useRef("");
+
+  const handleGenerate = useCallback(() => {
     if (!prompt.trim()) {
       setError("プロンプトを入力してください");
       return;
     }
-    setIsGenerating(true);
-    setError("");
+    const { width, height } = ratioToSize(aspectRatio, resolution);
+    const url = buildPollinationsUrl(prompt, width, height);
 
-    try {
-      const res = await fetch("/api/generate/banner", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, aspectRatio, resolution, style }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "生成に失敗しました");
-      setGeneratedImages(data.images ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "エラーが発生しました");
-    } finally {
-      setIsGenerating(false);
-    }
+    pendingUrlRef.current = url;
+    setPendingUrl(url);
+    setIsGenerating(true);
+    setGeneratedImages([]);
+    setError("");
+  }, [prompt, aspectRatio, resolution]);
+
+  const handleImageLoad = useCallback(() => {
+    const url = pendingUrlRef.current;
+    setGeneratedImages([url]);
+    setIsGenerating(false);
+
+    // 履歴保存（fire and forget）
+    fetch("/api/generate/banner", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageUrl: url, prompt, aspectRatio, resolution, style }),
+    }).catch(() => {});
   }, [prompt, aspectRatio, resolution, style]);
+
+  const handleImageError = useCallback(() => {
+    setIsGenerating(false);
+    setPendingUrl("");
+    setError("画像の生成に失敗しました。もう一度お試しください。");
+  }, []);
 
   return (
     <div className="h-full flex flex-col gap-6">
+      {/* ブラウザが直接Pollinations.aiから画像をロード（サーバー不要） */}
+      {pendingUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={pendingUrl}
+          alt=""
+          className="hidden"
+          onLoad={handleImageLoad}
+          onError={handleImageError}
+        />
+      )}
+
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">バナー生成</h1>
         <p className="text-gray-500 mt-1">AIを使ってバナー・商品画像を生成します</p>
@@ -66,9 +93,7 @@ export default function GeneratePage() {
             </button>
             {showTemplates && (
               <div className="p-4 border-t border-white/10">
-                <TemplateSelector
-                  onSelect={(tmpl) => setPrompt(tmpl)}
-                />
+                <TemplateSelector onSelect={(tmpl) => setPrompt(tmpl)} />
               </div>
             )}
           </div>
@@ -127,7 +152,7 @@ export default function GeneratePage() {
             className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-bold text-base transition-all shadow-lg shadow-blue-900/30 flex items-center justify-center gap-2"
           >
             <Wand2 className="w-5 h-5" />
-            {isGenerating ? "AI が生成中..." : "画像を生成する"}
+            {isGenerating ? "AI が生成中... (30〜60秒)" : "画像を生成する"}
           </button>
         </div>
 
