@@ -71,7 +71,7 @@ export async function POST(request: Request) {
       prompt: params.prompt,
       params: { style: params.style, aspectRatio: params.aspectRatio, resolution: params.resolution },
       output_images: uploadedUrls,
-      model: "gemini-2.0-flash-exp",
+      model: "gemini-3.1-flash-image-preview",
       resolution: params.resolution,
       aspect_ratio: params.aspectRatio,
       generation_type: "generate",
@@ -93,6 +93,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid parameters", details: error.issues }, { status: 400 });
     }
     console.error("Banner generation error:", error);
-    return NextResponse.json({ error: "Generation failed" }, { status: 500 });
+    const msg = error instanceof Error ? error.message : "";
+    if (msg.includes("RESOURCE_EXHAUSTED") || msg.includes("quota")) {
+      return NextResponse.json(
+        { error: "Gemini APIの利用上限に達しました。Google AI Studioで課金を有効にしてください。" },
+        { status: 429 }
+      );
+    }
+    return NextResponse.json({ error: "画像生成に失敗しました。プロンプトを変えて再試行してください。" }, { status: 500 });
   }
 }

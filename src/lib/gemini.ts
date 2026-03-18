@@ -2,18 +2,12 @@ import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
-const MODELS = {
-  fast: "gemini-2.0-flash-exp",
-  quality: "gemini-2.0-flash-exp",
-} as const;
-
-type ModelType = keyof typeof MODELS;
+const IMAGE_MODEL = "gemini-3.1-flash-image-preview";
 
 interface GenerateImageParams {
   prompt: string;
   aspectRatio?: string;
   resolution?: string;
-  model?: ModelType;
   referenceImages?: { data: Buffer; mimeType: string }[];
 }
 
@@ -25,38 +19,42 @@ interface GeneratedImage {
 export async function generateImage(
   params: GenerateImageParams
 ): Promise<GeneratedImage[]> {
-  const {
-    prompt,
-    aspectRatio = "1:1",
-    resolution = "1K",
-    model = "fast",
-    referenceImages = [],
-  } = params;
+  const { prompt, aspectRatio = "1:1", resolution = "1K", referenceImages = [] } = params;
 
-  const contents: { inlineData?: { data: string; mimeType: string }; text?: string }[] = [];
+  // 参照画像がある場合：Content配列（role+parts形式）
+  // 参照画像がない場合：シンプルな文字列プロンプト
+  const contents =
+    referenceImages.length > 0
+      ? [
+          {
+            role: "user",
+            parts: [
+              ...referenceImages.map((img) => ({
+                inlineData: {
+                  data: img.data.toString("base64"),
+                  mimeType: img.mimeType,
+                },
+              })),
+              { text: prompt },
+            ],
+          },
+        ]
+      : prompt;
 
-  for (const img of referenceImages) {
-    contents.push({
-      inlineData: {
-        data: img.data.toString("base64"),
-        mimeType: img.mimeType,
-      },
-    });
+  const config: Record<string, unknown> = {
+    responseModalities: ["TEXT", "IMAGE"],
+  };
+
+  // テキスト→画像生成時のみ imageConfig を付与
+  if (referenceImages.length === 0) {
+    config.imageConfig = { aspectRatio, imageSize: resolution };
   }
 
-  contents.push({ text: prompt });
-
-  const response = await ai.models.generateContent({
-    model: MODELS[model],
+  const response = await (ai.models.generateContent as Function)({
+    model: IMAGE_MODEL,
     contents,
-    config: {
-      responseModalities: ["TEXT", "IMAGE"],
-      imageConfig: {
-        aspectRatio,
-        imageSize: resolution,
-      },
-    },
-  } as Parameters<typeof ai.models.generateContent>[0]);
+    config,
+  });
 
   const images: GeneratedImage[] = [];
   for (const part of response.candidates?.[0]?.content?.parts ?? []) {
@@ -76,8 +74,8 @@ export async function removeBackground(
 ): Promise<GeneratedImage[]> {
   return generateImage({
     prompt:
-      "この画像の背景を完全に除去してください。" +
-      "対象物のエッジを正確に保持し、背景を透明（透過）にしてください。",
+      "Remove the background from this image completely. " +
+      "Keep the subject's edges precise and make the background fully transparent.",
     referenceImages: [{ data: imageBuffer, mimeType }],
   });
 }
@@ -89,8 +87,8 @@ export async function replaceBackground(
 ): Promise<GeneratedImage[]> {
   return generateImage({
     prompt:
-      `この画像の背景を以下に変更してください: ${newBackground}。` +
-      "対象物のエッジは正確に保持し、新しい背景と自然に馴染むようにしてください。",
+      `Replace the background of this image with: ${newBackground}. ` +
+      "Keep the subject's edges precise and blend naturally with the new background.",
     referenceImages: [{ data: imageBuffer, mimeType }],
   });
 }
@@ -101,9 +99,8 @@ export async function whiteBackground(
 ): Promise<GeneratedImage[]> {
   return generateImage({
     prompt:
-      "この商品写真の背景を純白（#FFFFFF）に変更してください。" +
-      "商品の輪郭は鮮明に保ち、自然な薄いドロップシャドウを追加してください。" +
-      "商品が中央に配置されるようにしてください。",
+      "Change the background of this product photo to pure white (#FFFFFF). " +
+      "Keep the product outline sharp, add a subtle drop shadow, and center the product.",
     referenceImages: [{ data: imageBuffer, mimeType }],
   });
 }

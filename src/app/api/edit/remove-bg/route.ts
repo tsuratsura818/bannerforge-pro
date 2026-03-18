@@ -58,6 +58,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ imageUrl: urlData.publicUrl });
   } catch (error) {
     console.error("Remove background error:", error);
-    return NextResponse.json({ error: "Processing failed" }, { status: 500 });
+    const msg = error instanceof Error ? error.message : "";
+    if (msg.includes("RESOURCE_EXHAUSTED") || msg.includes("quota")) {
+      return NextResponse.json(
+        { error: "Gemini APIの利用上限に達しました。Google AI Studioで課金を有効にしてください。" },
+        { status: 429 }
+      );
+    }
+    if (msg.includes("SAFETY") || msg.includes("safety")) {
+      return NextResponse.json(
+        { error: "画像がAIの安全フィルターに引っかかりました。別の画像をお試しください。" },
+        { status: 422 }
+      );
+    }
+    return NextResponse.json({ error: "背景除去に失敗しました。しばらくしてから再試行してください。" }, { status: 500 });
   }
 }

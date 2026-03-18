@@ -71,7 +71,7 @@ export function BackgroundRemover() {
           ) : resultUrl ? (
             <div className="space-y-3">
               <div className="relative aspect-square rounded-xl overflow-hidden bg-[url('data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2220%22%20height%3D%2220%22%3E%3Crect%20width%3D%2210%22%20height%3D%2210%22%20fill%3D%22%23ccc%22%2F%3E%3Crect%20x%3D%2210%22%20y%3D%2210%22%20width%3D%2210%22%20height%3D%2210%22%20fill%3D%22%23ccc%22%2F%3E%3C%2Fsvg%3E')]">
-                <Image src={resultUrl} alt="Result" fill className="object-contain" sizes="50vw" />
+                <Image src={resultUrl} alt="Result" fill className="object-contain" sizes="50vw" unoptimized />
               </div>
               <DownloadButton imageUrl={resultUrl} filename="removed-bg.png" />
             </div>

@@ -72,7 +72,7 @@ export function CropTool() {
           ) : resultUrl ? (
             <div className="space-y-3">
               <div className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800">
-                <Image src={resultUrl} alt="Cropped" fill className="object-contain" sizes="50vw" />
+                <Image src={resultUrl} alt="Cropped" fill className="object-contain" sizes="50vw" unoptimized />
               </div>
               <DownloadButton imageUrl={resultUrl} filename="cropped-image.png" />
             </div>
