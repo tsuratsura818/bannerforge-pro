@@ -38,7 +38,7 @@ export function BackgroundRemover() {
 
       setProgress("背景を解析中...");
       const blob = await removeBackground(file, {
-        publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.7/dist/",
+        publicPath: "https://staticimgly.com/@imgly/background-removal-data/1.7.0/dist/",
         progress: (key: string, current: number, total: number) => {
           if (key.includes("fetch")) {
             const pct = Math.round((current / total) * 100);
