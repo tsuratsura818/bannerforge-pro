@@ -32,21 +32,31 @@ export default function GeneratePage() {
 
     setIsGenerating(true);
     setGeneratedImages([]);
-    setError(`生成中... URL: ${url}`);
+    setError("");
 
     try {
-      const res = await fetch(url);
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
+      // 429(Queue full)は最大5回・5秒間隔でリトライ
+      let res: Response | null = null;
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        setError(`生成中... (試行 ${attempt}/5)`);
+        res = await fetch(url);
+        if (res.status !== 429) break;
+        if (attempt < 5) {
+          setError(`混雑中のため ${attempt * 5} 秒待機してリトライします...`);
+          await new Promise((r) => setTimeout(r, attempt * 5000));
+        }
+      }
+      if (!res || !res.ok) {
+        const body = await res?.text().catch(() => "") ?? "";
         throw new Error(
-          `Pollinations.ai HTTP ${res.status} ${res.statusText}` +
-          (body ? ` — ${body.slice(0, 300)}` : "")
+          `HTTP ${res?.status ?? "?"} ${res?.statusText ?? ""}` +
+          (body ? ` — ${body.slice(0, 200)}` : "")
         );
       }
       const contentType = res.headers.get("content-type") ?? "";
       if (!contentType.startsWith("image/")) {
         const body = await res.text();
-        throw new Error(`予期しないレスポンス (${contentType}): ${body.slice(0, 300)}`);
+        throw new Error(`予期しないレスポンス (${contentType}): ${body.slice(0, 200)}`);
       }
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);
