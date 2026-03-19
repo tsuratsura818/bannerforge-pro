@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { TemplateSelector } from "@/components/banner/TemplateSelector";
 import { PromptInput } from "@/components/banner/PromptInput";
 import { ParamsPanel } from "@/components/banner/ParamsPanel";
@@ -22,11 +22,7 @@ export default function GeneratePage() {
   const [showTemplates, setShowTemplates] = useState(false);
   const [error, setError] = useState("");
 
-  // ブラウザが直接ロードする隠し画像のURL
-  const [pendingUrl, setPendingUrl] = useState("");
-  const pendingUrlRef = useRef("");
-
-  const handleGenerate = useCallback(() => {
+  const handleGenerate = useCallback(async () => {
     if (!prompt.trim()) {
       setError("プロンプトを入力してください");
       return;
@@ -34,46 +30,41 @@ export default function GeneratePage() {
     const { width, height } = ratioToSize(aspectRatio, resolution);
     const url = buildPollinationsUrl(prompt, width, height);
 
-    pendingUrlRef.current = url;
-    setPendingUrl(url);
     setIsGenerating(true);
     setGeneratedImages([]);
-    setError("");
-  }, [prompt, aspectRatio, resolution]);
+    setError(`生成中... URL: ${url}`);
 
-  const handleImageLoad = useCallback(() => {
-    const url = pendingUrlRef.current;
-    setGeneratedImages([url]);
-    setIsGenerating(false);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`Pollinations.ai エラー: HTTP ${res.status} ${res.statusText}`);
+      }
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.startsWith("image/")) {
+        const body = await res.text();
+        throw new Error(`予期しないレスポンス (${contentType}): ${body.slice(0, 200)}`);
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      setGeneratedImages([objectUrl]);
+      setError("");
 
-    // 履歴保存（fire and forget）
-    fetch("/api/generate/banner", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imageUrl: url, prompt, aspectRatio, resolution, style }),
-    }).catch(() => {});
+      // 履歴保存（fire and forget）
+      fetch("/api/generate/banner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl: url, prompt, aspectRatio, resolution, style }),
+      }).catch(() => {});
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`❌ ${msg}`);
+    } finally {
+      setIsGenerating(false);
+    }
   }, [prompt, aspectRatio, resolution, style]);
-
-  const handleImageError = useCallback(() => {
-    setIsGenerating(false);
-    setPendingUrl("");
-    setError("画像の生成に失敗しました。もう一度お試しください。");
-  }, []);
 
   return (
     <div className="h-full flex flex-col gap-6">
-      {/* ブラウザが直接Pollinations.aiから画像をロード（サーバー不要） */}
-      {pendingUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={pendingUrl}
-          alt=""
-          className="hidden"
-          onLoad={handleImageLoad}
-          onError={handleImageError}
-        />
-      )}
-
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">バナー生成</h1>
         <p className="text-gray-500 mt-1">AIを使ってバナー・商品画像を生成します</p>
