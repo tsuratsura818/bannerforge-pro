@@ -97,7 +97,7 @@ HTMLコードのみ出力してください。<!DOCTYPE html> で始まり </htm
 説明文、マークダウンのコードブロック（\`\`\`）は絶対に含めないこと。`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-05-20",
+      model: "gemini-2.0-flash",
       contents: [{ role: "user", parts: [{ text: systemPrompt }] }],
       config: {
         temperature: 0.7,
@@ -120,7 +120,13 @@ HTMLコードのみ出力してください。<!DOCTYPE html> で始まり </htm
       throw new Error("有効なHTMLが生成されませんでした。再度お試しください。");
     }
 
-    return NextResponse.json({ html });
+    const usage = {
+      inputTokens:  response.usageMetadata?.promptTokenCount     ?? 0,
+      outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+      totalTokens:  response.usageMetadata?.totalTokenCount      ?? 0,
+    };
+
+    return NextResponse.json({ html, usage });
   } catch (error) {
     console.error("Web design generation error:", error);
     const msg = error instanceof Error ? error.message : "生成に失敗しました";

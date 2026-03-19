@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import {
   Globe, Wand2, Monitor, Smartphone, Code2,
-  Download, Copy, Check, Loader2, RefreshCw,
+  Download, Copy, Check, Loader2, RefreshCw, Info,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────
@@ -11,6 +11,17 @@ import {
 type SiteType = "lp" | "corporate" | "ec" | "portfolio" | "saas" | "blog";
 type SiteStyle = "minimal" | "modern" | "bold" | "dark" | "creative" | "clean";
 type PreviewMode = "desktop" | "mobile" | "code";
+
+interface UsageInfo {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+// Gemini 2.0 Flash 料金（$USD / 1M tokens）
+const PRICE_INPUT_PER_1M  = 0.10;
+const PRICE_OUTPUT_PER_1M = 0.40;
+const JPY_RATE = 150; // 概算レート
 
 // ── Constants ──────────────────────────────────────────
 
@@ -71,8 +82,15 @@ export default function WebDesignPage() {
   const [error, setError] = useState("");
   const [previewMode, setPreviewMode] = useState<PreviewMode>("desktop");
   const [copied, setCopied] = useState(false);
+  const [usage, setUsage] = useState<UsageInfo | null>(null);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const estimatedCostUsd = usage
+    ? (usage.inputTokens  / 1_000_000) * PRICE_INPUT_PER_1M
+    + (usage.outputTokens / 1_000_000) * PRICE_OUTPUT_PER_1M
+    : 0;
+  const estimatedCostJpy = estimatedCostUsd * JPY_RATE;
 
   const toggleSection = (val: string) => {
     setSections(prev =>
@@ -96,6 +114,7 @@ export default function WebDesignPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "生成に失敗しました");
       setHtml(data.html ?? "");
+      setUsage(data.usage ?? null);
       setPreviewMode("desktop");
     } catch (err) {
       setError(err instanceof Error ? err.message : "エラーが発生しました");
@@ -309,6 +328,29 @@ export default function WebDesignPage() {
                 <Download className="w-3.5 h-3.5" />
                 HTMLダウンロード
               </button>
+            </div>
+          )}
+
+          {/* コスト表示 */}
+          {usage && (
+            <div className="flex items-center gap-3 px-4 py-2 bg-[#0f0f1e] rounded-xl border border-white/10 text-xs shrink-0">
+              <Info className="w-3.5 h-3.5 text-white/30 shrink-0" />
+              <span className="text-white/40">今回の生成コスト（推定）:</span>
+              <span className="text-white font-semibold">
+                ${estimatedCostUsd.toFixed(4)}
+                <span className="text-white/40 font-normal ml-1">
+                  (≈ ¥{estimatedCostJpy.toFixed(2)})
+                </span>
+              </span>
+              <span className="text-white/20">|</span>
+              <span className="text-white/40">
+                入力 {usage.inputTokens.toLocaleString()} tokens
+                <span className="mx-1">+</span>
+                出力 {usage.outputTokens.toLocaleString()} tokens
+                <span className="mx-1">=</span>
+                計 {usage.totalTokens.toLocaleString()} tokens
+              </span>
+              <span className="text-white/20 ml-auto text-[10px]">Gemini 2.0 Flash · $0.10/$0.40 per 1M tokens</span>
             </div>
           )}
 
