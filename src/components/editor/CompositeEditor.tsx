@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   X, Plus, Trash2, Download, Loader2, Type,
-  ImageIcon, FileImage, Eye, EyeOff, ChevronUp, ChevronDown,
+  ImageIcon, FileImage, Eye, EyeOff, ChevronUp, ChevronDown, Sparkles,
 } from "lucide-react";
 
 // ────────── Types ──────────
@@ -112,7 +112,7 @@ export function CompositeEditor({
       visible: true,
     } satisfies ImageLayerData,
     ...productImages.map((src, i) => {
-      // AI が提案した配置があればそれを使う、なければデフォルト
+      // AI が提案した配置があればそれを使う、なければデフォルトグリッド
       const hint = initialLayout?.find(h => h.index === i);
       return {
         id: uid(),
@@ -139,6 +139,101 @@ export function CompositeEditor({
   const fileRef    = useRef<HTMLInputElement>(null);
   const interaction = useRef<Interaction | null>(null);
   const [disp, setDisp] = useState({ w: 0, h: 0 });
+
+  // ── Auto-layout: 商品画像があるが initialLayout がない場合に自動でレイアウト提案 ──
+  const [layoutLoading, setLayoutLoading] = useState(
+    productImages.length > 0 && !(initialLayout && initialLayout.length > 0)
+  );
+  const autoLayoutCalled = useRef(false);
+
+  useEffect(() => {
+    if (autoLayoutCalled.current) return;
+    if (productImages.length === 0) { setLayoutLoading(false); return; }
+    if (initialLayout && initialLayout.length > 0) { setLayoutLoading(false); return; }
+
+    autoLayoutCalled.current = true;
+
+    const doLayout = async () => {
+      try {
+        const products = await Promise.all(
+          productImages.map(async (src, index) => {
+            const res = await fetch(src);
+            const ab = await res.arrayBuffer();
+            return { index, base64: toBase64(ab), mimeType: "image/jpeg" };
+          })
+        );
+        const layoutRes = await fetch("/api/generate/layout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ backgroundUrl, products }),
+        });
+        if (layoutRes.ok) {
+          const { layout } = await layoutRes.json();
+          if (Array.isArray(layout) && layout.length > 0) {
+            setLayers(prev => prev.map(l => {
+              if (l.type !== "image" || l.name === "背景") return l;
+              const src = (l as ImageLayerData).src;
+              const prodIdx = productImages.indexOf(src);
+              if (prodIdx < 0) return l;
+              const hint = (layout as LayoutHint[]).find(h => h.index === prodIdx);
+              if (!hint) return l;
+              return { ...l, xPct: hint.xPct, yPct: hint.yPct, wPct: hint.wPct, hPct: hint.hPct } as Layer;
+            }));
+          }
+        }
+      } catch {
+        // デフォルト位置のまま
+      } finally {
+        setLayoutLoading(false);
+      }
+    };
+
+    doLayout();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── AI 要素追加（背景の上に新しいAI生成レイヤーを追加） ──
+  const [showAddElement, setShowAddElement] = useState(false);
+  const [elementPrompt, setElementPrompt] = useState("");
+  const [elementGenerating, setElementGenerating] = useState(false);
+
+  const handleAddElement = async () => {
+    if (!elementPrompt.trim() || elementGenerating) return;
+    setElementGenerating(true);
+    try {
+      const formData = new FormData();
+      formData.append("prompt", elementPrompt);
+      formData.append("aspectRatio", "1:1");
+      formData.append("resolution", "1K");
+      formData.append("style", "simple");
+      const res = await fetch("/api/generate/banner", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "生成に失敗しました");
+      }
+      const data = await res.json();
+      const images: string[] = data.images ?? [];
+      if (images.length > 0) {
+        setLayers(prev => [...prev, {
+          id: uid(), type: "image",
+          name: elementPrompt.slice(0, 14),
+          src: images[0],
+          xPct: 50, yPct: 50,
+          wPct: 40, hPct: 40,
+          opacity: 100, visible: true,
+        } satisfies ImageLayerData]);
+      }
+      setElementPrompt("");
+      setShowAddElement(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "生成に失敗しました");
+    } finally {
+      setElementGenerating(false);
+    }
+  };
 
   useEffect(() => {
     const el = sizerRef.current;
@@ -263,7 +358,6 @@ export function CompositeEditor({
       const cv = document.createElement("canvas");
       cv.width = W; cv.height = H;
       const ctx = cv.getContext("2d")!;
-      // チェッカーボード背景（透明部分）
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, W, H);
 
@@ -350,6 +444,10 @@ export function CompositeEditor({
         <span className="text-white font-semibold text-sm shrink-0">レイヤー編集</span>
         <span className="text-white/30 text-xs hidden md:block">全レイヤーがドラッグで移動 / 角でリサイズ可能</span>
         <div className="flex-1" />
+        <button onClick={() => setShowAddElement(v => !v)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-700/70 hover:bg-purple-600 text-white rounded-lg text-sm font-medium transition shrink-0">
+          <Sparkles className="w-4 h-4" /><span className="hidden sm:inline">AI要素追加</span>
+        </button>
         <button onClick={() => fileRef.current?.click()}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-medium transition shrink-0">
           <ImageIcon className="w-4 h-4" /><span className="hidden sm:inline">画像追加</span>
@@ -369,6 +467,32 @@ export function CompositeEditor({
           <span className="hidden sm:inline">{exporting ? "書き出し中..." : "PNG"}</span>
         </button>
       </div>
+
+      {/* AI 要素追加パネル */}
+      {showAddElement && (
+        <div className="bg-[#1a1a30] border-b border-white/10 px-4 py-3 flex items-center gap-3 shrink-0">
+          <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
+          <input
+            type="text"
+            value={elementPrompt}
+            onChange={e => setElementPrompt(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") handleAddElement(); }}
+            placeholder="追加する要素を説明（例：花びらの散る背景、ゴールドのリボン、星空...）"
+            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 focus:outline-none focus:border-purple-500"
+          />
+          <button
+            onClick={handleAddElement}
+            disabled={elementGenerating || !elementPrompt.trim()}
+            className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition shrink-0"
+          >
+            {elementGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            {elementGenerating ? "生成中..." : "生成して追加"}
+          </button>
+          <button onClick={() => setShowAddElement(false)} className="p-1.5 hover:bg-white/10 text-white/40 rounded-lg transition shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={addImageFile} />
 
@@ -395,6 +519,14 @@ export function CompositeEditor({
                 if (sizerRef.current) setDisp({ w: sizerRef.current.offsetWidth, h: sizerRef.current.offsetHeight });
               }}
             />
+
+            {/* AI レイアウト読み込み中オーバーレイ */}
+            {layoutLoading && dW > 0 && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 rounded z-20">
+                <Loader2 className="w-8 h-8 text-indigo-400 animate-spin mb-2" />
+                <p className="text-white text-sm font-medium">AIがレイアウトを設計中...</p>
+              </div>
+            )}
 
             {/* 全レイヤーを重ねて描画（背景含む） */}
             {dW > 0 && layers.map(layer => {
