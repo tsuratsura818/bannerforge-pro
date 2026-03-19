@@ -186,6 +186,45 @@ function buildImageGuide(siteType: string, style: string): string {
 
 // ── ヘルパー ──────────────────────────────────────────
 
+type HearingData = {
+  businessName: string;
+  industry: string;
+  targetAge: string;
+  targetGender: string;
+  targetOccupation: string;
+  targetNeeds: string;
+  strength1: string;
+  strength2: string;
+  strength3: string;
+  competitors: string;
+  referenceUrls: string;
+  brandTone: string;
+};
+
+function buildHearingSection(h: HearingData): string {
+  const lines: string[] = [];
+
+  if (h.businessName) lines.push(`Business/Brand name: ${h.businessName}`);
+  if (h.industry)     lines.push(`Industry: ${h.industry}`);
+
+  const target = [h.targetAge, h.targetGender, h.targetOccupation].filter(Boolean).join(", ");
+  if (target) lines.push(`Target audience: ${target}`);
+  if (h.targetNeeds) lines.push(`Target needs/pain points: ${h.targetNeeds}`);
+
+  const strengths = [h.strength1, h.strength2, h.strength3].filter(Boolean);
+  if (strengths.length > 0) {
+    lines.push(`Key USPs / strengths:`);
+    strengths.forEach((s, i) => lines.push(`  ${i + 1}. ${s}`));
+  }
+
+  if (h.competitors)   lines.push(`Competitor sites for reference: ${h.competitors}`);
+  if (h.referenceUrls) lines.push(`Design references to draw inspiration from: ${h.referenceUrls}`);
+  if (h.brandTone)     lines.push(`Brand tone/voice: ${h.brandTone}`);
+
+  if (lines.length === 0) return "";
+  return `\n═══ HEARING DATA (use this for precise, realistic content) ═══\n${lines.join("\n")}`;
+}
+
 function buildStitchPrompt(params: {
   prompt: string;
   siteType: string;
@@ -193,8 +232,9 @@ function buildStitchPrompt(params: {
   primaryColor: string;
   sections: string[];
   animation: string;
+  hearing?: HearingData;
 }): string {
-  const { prompt, siteType, style, primaryColor, sections, animation } = params;
+  const { prompt, siteType, style, primaryColor, sections, animation, hearing } = params;
   const sectionList = sections.map(s => `- ${SECTION_LABELS[s] ?? s}`).join("\n");
 
   const isDark = style === "dark";
@@ -215,7 +255,7 @@ ${sectionList}
 
 ═══ WEBSITE CONCEPT ═══
 ${prompt}
-
+${hearing ? buildHearingSection(hearing) : ""}
 ═══ PHOTO & IMAGE REQUIREMENTS ═══
 ${buildImageGuide(siteType, style)}
 
@@ -263,13 +303,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { prompt, siteType, style, primaryColor, sections, animation } = await request.json() as {
+    const { prompt, siteType, style, primaryColor, sections, animation, hearing } = await request.json() as {
       prompt: string;
       siteType: string;
       style: string;
       primaryColor: string;
       sections: string[];
       animation: "none" | "subtle" | "rich";
+      hearing?: HearingData;
     };
 
     if (!prompt?.trim()) {
@@ -282,7 +323,7 @@ export async function POST(request: Request) {
 
     const project = await stitch.createProject("BannerForge Web Design");
 
-    const stitchPrompt = buildStitchPrompt({ prompt, siteType, style, primaryColor, sections, animation });
+    const stitchPrompt = buildStitchPrompt({ prompt, siteType, style, primaryColor, sections, animation, hearing });
 
     const screen = await project.generate(
       stitchPrompt,
