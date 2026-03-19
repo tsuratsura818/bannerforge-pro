@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { generateImage } from "@/lib/gemini";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { z } from "zod";
 
 export const maxDuration = 60;
@@ -36,12 +37,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "画像が生成されませんでした" }, { status: 500 });
     }
 
-    // Supabase Storage にアップロード
+    // Supabase Storage にアップロード（service role でRLSバイパス）
+    const admin = createAdminClient();
     const uploadedUrls: string[] = [];
     for (let i = 0; i < images.length; i++) {
       const ext = images[i].mimeType.includes("png") ? "png" : "jpg";
       const filename = `${user.id}/${Date.now()}_${i}.${ext}`;
-      const { data, error: uploadError } = await supabase.storage
+      const { data, error: uploadError } = await admin.storage
         .from("generations")
         .upload(filename, images[i].data, { contentType: images[i].mimeType });
 
@@ -50,7 +52,7 @@ export async function POST(request: Request) {
         throw new Error(`ストレージへのアップロードに失敗: ${uploadError.message}`);
       }
       if (data) {
-        const { data: urlData } = supabase.storage
+        const { data: urlData } = admin.storage
           .from("generations")
           .getPublicUrl(filename);
         uploadedUrls.push(urlData.publicUrl);

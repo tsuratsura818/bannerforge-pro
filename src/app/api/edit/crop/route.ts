@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { cropImage } from "@/lib/image-processing";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
+    const admin = createAdminClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -25,11 +27,11 @@ export async function POST(request: Request) {
     const cropped = await cropImage(buffer, x, y, width, height);
 
     const filename = `${user.id}/${Date.now()}_crop.png`;
-    await supabase.storage
+    await admin.storage
       .from("generations")
       .upload(filename, cropped, { contentType: "image/png" });
 
-    const { data: urlData } = supabase.storage.from("generations").getPublicUrl(filename);
+    const { data: urlData } = admin.storage.from("generations").getPublicUrl(filename);
     return NextResponse.json({ imageUrl: urlData.publicUrl });
   } catch (error) {
     console.error("Crop error:", error);
