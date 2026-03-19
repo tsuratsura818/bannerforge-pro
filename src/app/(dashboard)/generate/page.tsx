@@ -7,7 +7,6 @@ import { ParamsPanel } from "@/components/banner/ParamsPanel";
 import { PreviewGrid } from "@/components/banner/PreviewGrid";
 import { ReferenceImageUploader } from "@/components/editor/ReferenceImageUploader";
 import { Wand2, ChevronDown, ChevronUp } from "lucide-react";
-import { ratioToSize, buildPollinationsUrl } from "@/lib/huggingface";
 import type { BannerStyle, AspectRatio, Resolution } from "@/types/generation";
 
 export default function GeneratePage() {
@@ -27,51 +26,21 @@ export default function GeneratePage() {
       setError("プロンプトを入力してください");
       return;
     }
-    const { width, height } = ratioToSize(aspectRatio, resolution);
-    const url = buildPollinationsUrl(prompt, width, height);
-
     setIsGenerating(true);
     setGeneratedImages([]);
     setError("");
 
     try {
-      // 429(Queue full)は最大5回・5秒間隔でリトライ
-      let res: Response | null = null;
-      for (let attempt = 1; attempt <= 5; attempt++) {
-        setError(`生成中... (試行 ${attempt}/5)`);
-        res = await fetch(url);
-        if (res.status !== 429) break;
-        if (attempt < 5) {
-          setError(`混雑中のため ${attempt * 5} 秒待機してリトライします...`);
-          await new Promise((r) => setTimeout(r, attempt * 5000));
-        }
-      }
-      if (!res || !res.ok) {
-        const body = await res?.text().catch(() => "") ?? "";
-        throw new Error(
-          `HTTP ${res?.status ?? "?"} ${res?.statusText ?? ""}` +
-          (body ? ` — ${body.slice(0, 200)}` : "")
-        );
-      }
-      const contentType = res.headers.get("content-type") ?? "";
-      if (!contentType.startsWith("image/")) {
-        const body = await res.text();
-        throw new Error(`予期しないレスポンス (${contentType}): ${body.slice(0, 200)}`);
-      }
-      const blob = await res.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      setGeneratedImages([objectUrl]);
-      setError("");
-
-      // 履歴保存（fire and forget）
-      fetch("/api/generate/banner", {
+      const res = await fetch("/api/generate/banner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageUrl: url, prompt, aspectRatio, resolution, style }),
-      }).catch(() => {});
+        body: JSON.stringify({ prompt, aspectRatio, resolution, style }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "生成に失敗しました");
+      setGeneratedImages(data.images ?? []);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(`❌ ${msg}`);
+      setError(err instanceof Error ? err.message : "エラーが発生しました");
     } finally {
       setIsGenerating(false);
     }
