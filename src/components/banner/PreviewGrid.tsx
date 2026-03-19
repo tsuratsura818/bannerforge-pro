@@ -4,7 +4,8 @@ import { useState } from "react";
 import { ImagePreview } from "@/components/shared/ImagePreview";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
-import { RefreshCw, Heart, Layers, Loader2 } from "lucide-react";
+import { TextEditor } from "@/components/editor/TextEditor";
+import { RefreshCw, Heart, Layers, Loader2, Type } from "lucide-react";
 
 interface PreviewGridProps {
   images: string[];
@@ -14,6 +15,7 @@ interface PreviewGridProps {
 
 export function PreviewGrid({ images, isLoading, onRegenerate }: PreviewGridProps) {
   const [exportingLayers, setExportingLayers] = useState(false);
+  const [textEditUrl, setTextEditUrl] = useState<string | null>(null);
 
   const handleExportLayers = async () => {
     setExportingLayers(true);
@@ -86,6 +88,13 @@ export function PreviewGrid({ images, isLoading, onRegenerate }: PreviewGridProp
           </div>
           <div className="flex items-center gap-2 p-3 border-t border-gray-200 dark:border-gray-800">
             <ExportButton imageUrl={url} basename={`bannerforge-${i + 1}`} />
+            <button
+              onClick={() => setTextEditUrl(url)}
+              className="flex items-center gap-1.5 px-3 py-2 text-gray-600 dark:text-gray-400 hover:text-indigo-500 dark:hover:text-indigo-400 transition text-sm"
+            >
+              <Type className="w-4 h-4" />
+              テキスト
+            </button>
             <button className="flex items-center gap-1.5 px-3 py-2 text-gray-600 dark:text-gray-400 hover:text-red-500 transition text-sm">
               <Heart className="w-4 h-4" />
               お気に入り
@@ -102,6 +111,11 @@ export function PreviewGrid({ images, isLoading, onRegenerate }: PreviewGridProp
           </div>
         </div>
       ))}
+
+      {/* テキストエディタ（フルスクリーンモーダル） */}
+      {textEditUrl && (
+        <TextEditor imageUrl={textEditUrl} onClose={() => setTextEditUrl(null)} />
+      )}
     </div>
   );
 }
