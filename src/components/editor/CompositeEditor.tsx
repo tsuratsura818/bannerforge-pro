@@ -48,9 +48,18 @@ interface Interaction {
   cH: number;
 }
 
+interface LayoutHint {
+  index: number;
+  xPct: number;
+  yPct: number;
+  wPct: number;
+  hPct: number;
+}
+
 interface CompositeEditorProps {
   backgroundUrl: string;
-  productImages?: string[]; // blob: or https: URLs
+  productImages?: string[];
+  initialLayout?: LayoutHint[]; // AI が提案した初期配置
   onClose: () => void;
 }
 
@@ -62,26 +71,22 @@ const FONTS = [
   { value: "Impact",      label: "Impact" },
   { value: "Arial Black", label: "Arial Black" },
 ];
-
 const QUICK_COLORS = [
   "#ffffff","#000000","#ff3333","#ff9900",
   "#ffee00","#33cc66","#3399ff","#cc44cc",
 ];
-
-const HANDLE = 10; // handle px size
+const HANDLE = 10;
 
 // ────────── Helpers ──────────
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-/** ArrayBuffer を安全に base64 変換 */
 function toBase64(ab: ArrayBuffer): string {
   const bytes = new Uint8Array(ab);
   let bin = "";
-  const chunk = 8192;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    bin += String.fromCharCode(...Array.from(bytes.subarray(i, i + chunk)));
+  for (let i = 0; i < bytes.length; i += 8192) {
+    bin += String.fromCharCode(...Array.from(bytes.subarray(i, i + 8192)));
   }
   return btoa(bin);
 }
@@ -91,40 +96,55 @@ function toBase64(ab: ArrayBuffer): string {
 export function CompositeEditor({
   backgroundUrl,
   productImages = [],
+  initialLayout,
   onClose,
 }: CompositeEditorProps) {
-  // 商品画像を初期レイヤーとして配置
-  const [layers, setLayers] = useState<Layer[]>(() =>
-    productImages.map((src, i) => ({
+  // 背景を一番下のレイヤーとして初期化（全レイヤーが等しく編集可能）
+  const [layers, setLayers] = useState<Layer[]>(() => [
+    {
       id: uid(),
       type: "image",
-      name: `商品画像 ${i + 1}`,
-      src,
-      xPct: 20 + (i % 3) * 30,
-      yPct: 30 + Math.floor(i / 3) * 40,
-      wPct: 30,
-      hPct: 30,
+      name: "背景",
+      src: backgroundUrl,
+      xPct: 50, yPct: 50,
+      wPct: 100, hPct: 100,
       opacity: 100,
       visible: true,
-    } satisfies ImageLayerData))
-  );
+    } satisfies ImageLayerData,
+    ...productImages.map((src, i) => {
+      // AI が提案した配置があればそれを使う、なければデフォルト
+      const hint = initialLayout?.find(h => h.index === i);
+      return {
+        id: uid(),
+        type: "image",
+        name: `商品画像 ${i + 1}`,
+        src,
+        xPct: hint?.xPct ?? (20 + (i % 3) * 30),
+        yPct: hint?.yPct ?? (30 + Math.floor(i / 3) * 40),
+        wPct: hint?.wPct ?? 30,
+        hPct: hint?.hPct ?? 30,
+        opacity: 100,
+        visible: true,
+      } satisfies ImageLayerData;
+    }),
+  ]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId,  setEditingId]  = useState<string | null>(null);
-  const [exporting,     setExporting]     = useState(false);
-  const [exportingPsd,  setExportingPsd]  = useState(false);
+  const [exporting,    setExporting]    = useState(false);
+  const [exportingPsd, setExportingPsd] = useState(false);
 
-  const bgRef      = useRef<HTMLImageElement>(null);
+  // 不可視のサイズ参照用 img（キャンバス表示サイズの取得に使用）
+  const sizerRef   = useRef<HTMLImageElement>(null);
   const fileRef    = useRef<HTMLInputElement>(null);
   const interaction = useRef<Interaction | null>(null);
   const [disp, setDisp] = useState({ w: 0, h: 0 });
 
-  // 表示サイズを追跡
   useEffect(() => {
-    const el = bgRef.current;
+    const el = sizerRef.current;
     if (!el) return;
     const obs = new ResizeObserver(() => {
-      if (bgRef.current) setDisp({ w: bgRef.current.offsetWidth, h: bgRef.current.offsetHeight });
+      if (sizerRef.current) setDisp({ w: sizerRef.current.offsetWidth, h: sizerRef.current.offsetHeight });
     });
     obs.observe(el);
     if (el.complete) setDisp({ w: el.offsetWidth, h: el.offsetHeight });
@@ -156,7 +176,7 @@ export function CompositeEditor({
   // ── Pointer interactions ──
 
   const startInteraction = (e: React.PointerEvent, id: string, type: InteractionType) => {
-    if (!bgRef.current) return;
+    if (!sizerRef.current) return;
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const layer = layers.find(l => l.id === id)!;
@@ -164,8 +184,8 @@ export function CompositeEditor({
       layerId: id, type,
       startX: e.clientX, startY: e.clientY,
       origLayer: { ...layer },
-      cW: bgRef.current.offsetWidth,
-      cH: bgRef.current.offsetHeight,
+      cW: sizerRef.current.offsetWidth,
+      cH: sizerRef.current.offsetHeight,
     };
     setSelectedId(id);
     setEditingId(null);
@@ -180,35 +200,24 @@ export function CompositeEditor({
 
     if (ia.type === "move") {
       update(ia.layerId, {
-        xPct: clamp(o.xPct + (dx / cW) * 100, 0, 100),
-        yPct: clamp(o.yPct + (dy / cH) * 100, 0, 100),
+        xPct: clamp(o.xPct + (dx / cW) * 100, -50, 150),
+        yPct: clamp(o.yPct + (dy / cH) * 100, -50, 150),
       });
       return;
     }
-
-    // resize (image only)
     if (o.type !== "image") return;
     const oi = o as ImageLayerData;
-    const oW = oi.wPct / 100 * cW;
-    const oH = oi.hPct / 100 * cH;
-    const oL = oi.xPct / 100 * cW - oW / 2;
-    const oT = oi.yPct / 100 * cH - oH / 2;
-    const oR = oL + oW;
-    const oB = oT + oH;
-
-    let l = oL, t = oT, r = oR, b = oB;
+    const oW = oi.wPct / 100 * cW, oH = oi.hPct / 100 * cH;
+    const oL = oi.xPct / 100 * cW - oW / 2, oT = oi.yPct / 100 * cH - oH / 2;
+    let l = oL, t = oT, r = oL + oW, b = oT + oH;
     if (ia.type === "tl") { l = oL + dx; t = oT + dy; }
-    if (ia.type === "tr") { r = oR + dx; t = oT + dy; }
-    if (ia.type === "bl") { l = oL + dx; b = oB + dy; }
-    if (ia.type === "br") { r = oR + dx; b = oB + dy; }
-
-    const nW = Math.max(10, r - l);
-    const nH = Math.max(10, b - t);
+    if (ia.type === "tr") { r = oL + oW + dx; t = oT + dy; }
+    if (ia.type === "bl") { l = oL + dx; b = oT + oH + dy; }
+    if (ia.type === "br") { r = oL + oW + dx; b = oT + oH + dy; }
+    const nW = Math.max(10, r - l), nH = Math.max(10, b - t);
     update(ia.layerId, {
-      wPct: (nW / cW) * 100,
-      hPct: (nH / cH) * 100,
-      xPct: ((l + nW / 2) / cW) * 100,
-      yPct: ((t + nH / 2) / cH) * 100,
+      wPct: (nW / cW) * 100, hPct: (nH / cH) * 100,
+      xPct: ((l + nW / 2) / cW) * 100, yPct: ((t + nH / 2) / cH) * 100,
     });
   };
 
@@ -219,11 +228,11 @@ export function CompositeEditor({
   const addImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const src = URL.createObjectURL(file);
     setLayers(prev => [...prev, {
       id: uid(), type: "image",
       name: file.name.replace(/\.[^.]+$/, ""),
-      src, xPct: 50, yPct: 50, wPct: 35, hPct: 35, opacity: 100, visible: true,
+      src: URL.createObjectURL(file),
+      xPct: 50, yPct: 50, wPct: 35, hPct: 35, opacity: 100, visible: true,
     } satisfies ImageLayerData]);
     e.target.value = "";
   };
@@ -241,20 +250,22 @@ export function CompositeEditor({
     setEditingId(id);
   };
 
-  // ── PNG export (canvas) ──
+  // ── PNG export ──
 
   const handleExportPng = async () => {
-    const bg = bgRef.current;
-    if (!bg) return;
+    const sizer = sizerRef.current;
+    if (!sizer) return;
     setExporting(true);
     try {
-      await new Promise<void>(r => bg.complete ? r() : (bg.onload = () => r()));
-      const W = bg.naturalWidth || bg.offsetWidth;
-      const H = bg.naturalHeight || bg.offsetHeight;
+      await new Promise<void>(r => sizer.complete ? r() : (sizer.onload = () => r()));
+      const W = sizer.naturalWidth || sizer.offsetWidth;
+      const H = sizer.naturalHeight || sizer.offsetHeight;
       const cv = document.createElement("canvas");
       cv.width = W; cv.height = H;
       const ctx = cv.getContext("2d")!;
-      ctx.drawImage(bg, 0, 0, W, H);
+      // チェッカーボード背景（透明部分）
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, W, H);
 
       for (const layer of layers) {
         if (!layer.visible) continue;
@@ -262,8 +273,7 @@ export function CompositeEditor({
           const img = new Image();
           img.crossOrigin = "anonymous";
           await new Promise<void>(r => { img.onload = () => r(); img.onerror = () => r(); img.src = layer.src; });
-          const lW = (layer.wPct / 100) * W;
-          const lH = (layer.hPct / 100) * H;
+          const lW = (layer.wPct / 100) * W, lH = (layer.hPct / 100) * H;
           ctx.save();
           ctx.globalAlpha = layer.opacity / 100;
           ctx.drawImage(img, (layer.xPct / 100) * W - lW / 2, (layer.yPct / 100) * H - lH / 2, lW, lH);
@@ -281,7 +291,6 @@ export function CompositeEditor({
           ctx.restore();
         }
       }
-
       cv.toBlob(blob => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
@@ -292,7 +301,7 @@ export function CompositeEditor({
     } finally { setExporting(false); }
   };
 
-  // ── PSD export (server) ──
+  // ── PSD export ──
 
   const handleExportPsd = async () => {
     setExportingPsd(true);
@@ -307,7 +316,6 @@ export function CompositeEditor({
           return layer;
         })
       );
-
       const res = await fetch("/api/export/psd-composite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -340,35 +348,23 @@ export function CompositeEditor({
           <X className="w-5 h-5 text-white" />
         </button>
         <span className="text-white font-semibold text-sm shrink-0">レイヤー編集</span>
-        <span className="text-white/30 text-xs hidden sm:block">ドラッグで移動 / 角をドラッグでリサイズ / Wクリックでテキスト編集</span>
+        <span className="text-white/30 text-xs hidden md:block">全レイヤーがドラッグで移動 / 角でリサイズ可能</span>
         <div className="flex-1" />
-        <button
-          onClick={() => fileRef.current?.click()}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-medium transition shrink-0"
-        >
-          <ImageIcon className="w-4 h-4" />
-          <span className="hidden sm:inline">画像追加</span>
+        <button onClick={() => fileRef.current?.click()}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-medium transition shrink-0">
+          <ImageIcon className="w-4 h-4" /><span className="hidden sm:inline">画像追加</span>
         </button>
-        <button
-          onClick={addText}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-medium transition shrink-0"
-        >
-          <Type className="w-4 h-4" />
-          <span className="hidden sm:inline">テキスト</span>
+        <button onClick={addText}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-medium transition shrink-0">
+          <Type className="w-4 h-4" /><span className="hidden sm:inline">テキスト</span>
         </button>
-        <button
-          onClick={handleExportPsd}
-          disabled={exportingPsd}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-700 hover:bg-violet-600 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition shrink-0"
-        >
+        <button onClick={handleExportPsd} disabled={exportingPsd}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-700 hover:bg-violet-600 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition shrink-0">
           {exportingPsd ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileImage className="w-4 h-4" />}
           <span className="hidden sm:inline">{exportingPsd ? "作成中..." : "PSD"}</span>
         </button>
-        <button
-          onClick={handleExportPng}
-          disabled={exporting}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition shrink-0"
-        >
+        <button onClick={handleExportPng} disabled={exporting}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition shrink-0">
           {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
           <span className="hidden sm:inline">{exporting ? "書き出し中..." : "PNG"}</span>
         </button>
@@ -379,28 +375,28 @@ export function CompositeEditor({
       {/* Body */}
       <div className="flex flex-1 min-h-0">
         {/* Canvas area */}
-        <div
-          className="flex-1 flex items-center justify-center p-4 overflow-hidden"
+        <div className="flex-1 flex items-center justify-center p-4 overflow-hidden"
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onClick={() => { setSelectedId(null); setEditingId(null); }}
-        >
+          onClick={() => { setSelectedId(null); setEditingId(null); }}>
+
           <div className="relative inline-block">
-            {/* Background image */}
+            {/* 不可視のサイズ参照 img（キャンバスの幅・高さ取得用） */}
             <img
-              ref={bgRef}
+              ref={sizerRef}
               src={backgroundUrl}
-              alt="background"
+              alt=""
               crossOrigin="anonymous"
               draggable={false}
+              aria-hidden="true"
               className="block max-w-full"
-              style={{ maxHeight: "calc(100vh - 200px)", display: "block" }}
+              style={{ maxHeight: "calc(100vh - 200px)", visibility: "hidden", pointerEvents: "none" }}
               onLoad={() => {
-                if (bgRef.current) setDisp({ w: bgRef.current.offsetWidth, h: bgRef.current.offsetHeight });
+                if (sizerRef.current) setDisp({ w: sizerRef.current.offsetWidth, h: sizerRef.current.offsetHeight });
               }}
             />
 
-            {/* Layers */}
+            {/* 全レイヤーを重ねて描画（背景含む） */}
             {dW > 0 && layers.map(layer => {
               if (!layer.visible) return null;
               const isSelected = selectedId === layer.id;
@@ -408,15 +404,12 @@ export function CompositeEditor({
               if (layer.type === "image") {
                 const lW = (layer.wPct / 100) * dW;
                 const lH = (layer.hPct / 100) * dH;
-                const lX = (layer.xPct / 100) * dW;
-                const lY = (layer.yPct / 100) * dH;
-
                 return (
-                  <div
-                    key={layer.id}
+                  <div key={layer.id}
                     style={{
                       position: "absolute",
-                      left: lX, top: lY,
+                      left: (layer.xPct / 100) * dW,
+                      top: (layer.yPct / 100) * dH,
                       width: lW, height: lH,
                       transform: "translate(-50%, -50%)",
                       outline: isSelected ? "2px solid #818cf8" : "none",
@@ -428,30 +421,22 @@ export function CompositeEditor({
                     onPointerDown={e => startInteraction(e, layer.id, "move")}
                     onClick={e => e.stopPropagation()}
                   >
-                    <img
-                      src={layer.src}
-                      alt={layer.name}
-                      draggable={false}
+                    <img src={layer.src} alt={layer.name} draggable={false}
                       style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none", display: "block" }}
                     />
-
-                    {/* Resize handles */}
                     {isSelected && (["tl","tr","bl","br"] as ResizeHandle[]).map(h => (
-                      <div
-                        key={h}
-                        style={{
-                          position: "absolute",
-                          width: HANDLE, height: HANDLE,
-                          background: "#6366f1",
-                          border: "2px solid white",
-                          borderRadius: 2,
-                          zIndex: 10,
-                          ...(h==="tl" ? { top: -HANDLE/2, left: -HANDLE/2 }
-                            : h==="tr" ? { top: -HANDLE/2, right: -HANDLE/2 }
-                            : h==="bl" ? { bottom: -HANDLE/2, left: -HANDLE/2 }
-                            :            { bottom: -HANDLE/2, right: -HANDLE/2 }),
-                          cursor: (h==="tl"||h==="br") ? "nwse-resize" : "nesw-resize",
-                        }}
+                      <div key={h} style={{
+                        position: "absolute",
+                        width: HANDLE, height: HANDLE,
+                        background: "#6366f1",
+                        border: "2px solid white",
+                        borderRadius: 2, zIndex: 10,
+                        ...(h==="tl" ? { top: -HANDLE/2, left: -HANDLE/2 }
+                          : h==="tr" ? { top: -HANDLE/2, right: -HANDLE/2 }
+                          : h==="bl" ? { bottom: -HANDLE/2, left: -HANDLE/2 }
+                          :            { bottom: -HANDLE/2, right: -HANDLE/2 }),
+                        cursor: (h==="tl"||h==="br") ? "nwse-resize" : "nesw-resize",
+                      }}
                         onPointerDown={e => startInteraction(e, layer.id, h)}
                       />
                     ))}
@@ -462,43 +447,34 @@ export function CompositeEditor({
               // Text layer
               const fs = (layer.fontSizePct / 100) * dH;
               return (
-                <div
-                  key={layer.id}
+                <div key={layer.id}
                   style={{
                     position: "absolute",
-                    left: (layer.xPct / 100) * dW,
-                    top: (layer.yPct / 100) * dH,
+                    left: (layer.xPct / 100) * dW, top: (layer.yPct / 100) * dH,
                     transform: "translate(-50%, -50%)",
-                    fontSize: fs,
-                    fontFamily: layer.fontFamily,
-                    color: layer.color,
-                    fontWeight: layer.bold ? "bold" : "normal",
+                    fontSize: fs, fontFamily: layer.fontFamily,
+                    color: layer.color, fontWeight: layer.bold ? "bold" : "normal",
                     textAlign: layer.align,
                     textShadow: "0 2px 8px rgba(0,0,0,0.6)",
                     cursor: editingId === layer.id ? "text" : "grab",
                     outline: isSelected ? "2px dashed #818cf8" : "none",
-                    outlineOffset: 4,
-                    padding: "2px 6px",
-                    whiteSpace: "nowrap",
-                    userSelect: "none",
+                    outlineOffset: 4, padding: "2px 6px",
+                    whiteSpace: "nowrap", userSelect: "none",
                   }}
                   onPointerDown={e => startInteraction(e, layer.id, "move")}
                   onDoubleClick={e => { e.stopPropagation(); setEditingId(layer.id); setSelectedId(layer.id); }}
                   onClick={e => e.stopPropagation()}
                 >
                   {editingId === layer.id ? (
-                    <input
-                      autoFocus
-                      value={layer.text}
-                      onChange={e => update(layer.id, { text: e.target.value })}
+                    <input autoFocus value={layer.text}
+                      onChange={e => update(layer.id, { text: e.target.value } as Partial<TextLayerData>)}
                       onBlur={() => setEditingId(null)}
                       onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); setEditingId(null); } e.stopPropagation(); }}
                       onClick={e => e.stopPropagation()}
                       style={{
                         background: "transparent", border: "none", outline: "none",
                         font: "inherit", color: "inherit", textAlign: layer.align,
-                        width: `${Math.max(layer.text.length + 3, 5) * 0.65}em`,
-                        minWidth: "4em",
+                        width: `${Math.max(layer.text.length + 3, 5) * 0.65}em`, minWidth: "4em",
                       }}
                     />
                   ) : layer.text}
@@ -512,12 +488,13 @@ export function CompositeEditor({
         <div className="w-64 bg-[#0f0f1e] border-l border-white/10 flex flex-col min-h-0">
           {/* Properties */}
           {sel && (
-            <div className="shrink-0 border-b border-white/10 p-3 space-y-2.5 overflow-y-auto max-h-64">
+            <div className="shrink-0 border-b border-white/10 p-3 space-y-2.5 overflow-y-auto max-h-72">
               <div className="flex items-center justify-between">
                 <span className="text-white text-xs font-semibold">
                   {sel.type === "image" ? "画像プロパティ" : "テキストプロパティ"}
                 </span>
-                <button onClick={() => remove(sel.id)} className="p-1 hover:bg-red-500/20 text-red-400 rounded transition">
+                <button onClick={() => remove(sel.id)}
+                  className="p-1 hover:bg-red-500/20 text-red-400 rounded transition">
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -526,11 +503,9 @@ export function CompositeEditor({
                 <>
                   <div>
                     <label className="text-xs text-white/50">不透明度: {(sel as ImageLayerData).opacity}%</label>
-                    <input
-                      type="range" min={10} max={100} value={(sel as ImageLayerData).opacity}
-                      onChange={e => update(sel.id, { opacity: +e.target.value })}
-                      className="w-full accent-indigo-500 mt-1"
-                    />
+                    <input type="range" min={10} max={100} value={(sel as ImageLayerData).opacity}
+                      onChange={e => update(sel.id, { opacity: +e.target.value } as Partial<ImageLayerData>)}
+                      className="w-full accent-indigo-500 mt-1" />
                   </div>
                   <div className="grid grid-cols-2 gap-1 text-xs text-white/40">
                     <span>W: {(sel as ImageLayerData).wPct.toFixed(1)}%</span>
@@ -539,56 +514,46 @@ export function CompositeEditor({
                 </>
               ) : (
                 <>
-                  <textarea
-                    value={(sel as TextLayerData).text}
-                    onChange={e => update(sel.id, { text: e.target.value })}
+                  <textarea value={(sel as TextLayerData).text}
+                    onChange={e => update(sel.id, { text: e.target.value } as Partial<TextLayerData>)}
                     rows={2}
                     className="w-full bg-white/5 border border-white/10 rounded px-2 py-1.5 text-white text-xs resize-none focus:outline-none focus:border-indigo-500"
                   />
-                  <select
-                    value={(sel as TextLayerData).fontFamily}
-                    onChange={e => update(sel.id, { fontFamily: e.target.value })}
-                    className="w-full bg-white/5 border border-white/10 rounded px-2 py-1.5 text-white text-xs focus:outline-none"
-                  >
+                  <select value={(sel as TextLayerData).fontFamily}
+                    onChange={e => update(sel.id, { fontFamily: e.target.value } as Partial<TextLayerData>)}
+                    className="w-full bg-white/5 border border-white/10 rounded px-2 py-1.5 text-white text-xs focus:outline-none">
                     {FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
                   </select>
                   <div>
                     <label className="text-xs text-white/50">サイズ: {(sel as TextLayerData).fontSizePct}%</label>
-                    <input
-                      type="range" min={2} max={25} value={(sel as TextLayerData).fontSizePct}
-                      onChange={e => update(sel.id, { fontSizePct: +e.target.value })}
-                      className="w-full accent-indigo-500"
-                    />
+                    <input type="range" min={2} max={25} value={(sel as TextLayerData).fontSizePct}
+                      onChange={e => update(sel.id, { fontSizePct: +e.target.value } as Partial<TextLayerData>)}
+                      className="w-full accent-indigo-500" />
                   </div>
                   <div className="flex items-center gap-2">
-                    <input
-                      type="color" value={(sel as TextLayerData).color}
-                      onChange={e => update(sel.id, { color: e.target.value })}
-                      className="w-8 h-8 rounded cursor-pointer border border-white/10 bg-transparent shrink-0"
-                    />
+                    <input type="color" value={(sel as TextLayerData).color}
+                      onChange={e => update(sel.id, { color: e.target.value } as Partial<TextLayerData>)}
+                      className="w-8 h-8 rounded cursor-pointer border border-white/10 bg-transparent shrink-0" />
                     <div className="flex flex-wrap gap-1">
                       {QUICK_COLORS.map(c => (
-                        <button key={c} onClick={() => update(sel.id, { color: c })}
+                        <button key={c} onClick={() => update(sel.id, { color: c } as Partial<TextLayerData>)}
                           style={{ background: c }}
-                          className="w-5 h-5 rounded border border-white/20 hover:scale-110 transition-transform"
-                        />
+                          className="w-5 h-5 rounded border border-white/20 hover:scale-110 transition-transform" />
                       ))}
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-white/50">ボールド</span>
                     <button
-                      onClick={() => update(sel.id, { bold: !(sel as TextLayerData).bold })}
-                      className={`relative w-9 h-5 rounded-full transition-colors ${(sel as TextLayerData).bold ? "bg-indigo-600" : "bg-white/20"}`}
-                    >
+                      onClick={() => update(sel.id, { bold: !(sel as TextLayerData).bold } as Partial<TextLayerData>)}
+                      className={`relative w-9 h-5 rounded-full transition-colors ${(sel as TextLayerData).bold ? "bg-indigo-600" : "bg-white/20"}`}>
                       <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${(sel as TextLayerData).bold ? "translate-x-4" : ""}`} />
                     </button>
                   </div>
                   <div className="flex gap-1">
                     {(["left","center","right"] as const).map(a => (
-                      <button key={a} onClick={() => update(sel.id, { align: a })}
-                        className={`flex-1 py-1 text-xs rounded transition ${(sel as TextLayerData).align === a ? "bg-indigo-600 text-white" : "bg-white/5 text-white/50 hover:bg-white/10"}`}
-                      >
+                      <button key={a} onClick={() => update(sel.id, { align: a } as Partial<TextLayerData>)}
+                        className={`flex-1 py-1 text-xs rounded transition ${(sel as TextLayerData).align === a ? "bg-indigo-600 text-white" : "bg-white/5 text-white/50 hover:bg-white/10"}`}>
                         {a === "left" ? "左" : a === "center" ? "中" : "右"}
                       </button>
                     ))}
@@ -603,50 +568,39 @@ export function CompositeEditor({
             <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
               <p className="text-xs text-white/40 font-medium uppercase tracking-wide">レイヤー</p>
               <div className="flex gap-1">
-                <button onClick={() => fileRef.current?.click()} className="p-1 hover:bg-white/10 text-white/40 hover:text-white rounded transition" title="画像追加">
+                <button onClick={() => fileRef.current?.click()} title="画像追加"
+                  className="p-1 hover:bg-white/10 text-white/40 hover:text-white rounded transition">
                   <Plus className="w-3.5 h-3.5" />
                 </button>
-                <button onClick={addText} className="p-1 hover:bg-white/10 text-white/40 hover:text-white rounded transition" title="テキスト追加">
+                <button onClick={addText} title="テキスト追加"
+                  className="p-1 hover:bg-white/10 text-white/40 hover:text-white rounded transition">
                   <Type className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
 
-            {/* Layers (top = last in array) */}
-            {[...layers].reverse().map((layer, ri) => {
-              const origIdx = layers.length - 1 - ri;
-              return (
-                <div
-                  key={layer.id}
-                  onClick={() => { setSelectedId(layer.id); setEditingId(null); }}
-                  className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition ${selectedId === layer.id ? "bg-indigo-600/20" : "hover:bg-white/5"}`}
-                >
-                  {layer.type === "image"
-                    ? <ImageIcon className="w-3 h-3 shrink-0 text-blue-400" />
-                    : <Type className="w-3 h-3 shrink-0 text-green-400" />}
-                  <span className={`text-xs flex-1 truncate ${selectedId === layer.id ? "text-white" : "text-white/60"}`}>
-                    {layer.name}
-                  </span>
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <button onClick={e => { e.stopPropagation(); shift(layer.id, 1); }} className="p-0.5 hover:text-white text-white/30 transition" title="上へ">
-                      <ChevronUp className="w-3 h-3" />
-                    </button>
-                    <button onClick={e => { e.stopPropagation(); shift(layer.id, -1); }} className="p-0.5 hover:text-white text-white/30 transition" title="下へ">
-                      <ChevronDown className="w-3 h-3" />
-                    </button>
-                    <button onClick={e => { e.stopPropagation(); update(layer.id, { visible: !layer.visible }); }} className="p-0.5 hover:text-white text-white/30 transition">
-                      {layer.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                    </button>
-                  </div>
+            {[...layers].reverse().map(layer => (
+              <div key={layer.id}
+                onClick={() => { setSelectedId(layer.id); setEditingId(null); }}
+                className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition ${selectedId === layer.id ? "bg-indigo-600/20" : "hover:bg-white/5"}`}>
+                {layer.type === "image"
+                  ? <ImageIcon className="w-3 h-3 shrink-0 text-blue-400" />
+                  : <Type className="w-3 h-3 shrink-0 text-green-400" />}
+                <span className={`text-xs flex-1 truncate ${selectedId === layer.id ? "text-white" : "text-white/60"}`}>
+                  {layer.name}
+                </span>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button onClick={e => { e.stopPropagation(); shift(layer.id, 1); }} title="上へ"
+                    className="p-0.5 hover:text-white text-white/30 transition"><ChevronUp className="w-3 h-3" /></button>
+                  <button onClick={e => { e.stopPropagation(); shift(layer.id, -1); }} title="下へ"
+                    className="p-0.5 hover:text-white text-white/30 transition"><ChevronDown className="w-3 h-3" /></button>
+                  <button onClick={e => { e.stopPropagation(); update(layer.id, { visible: !layer.visible }); }}
+                    className="p-0.5 hover:text-white text-white/30 transition">
+                    {layer.visible ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                  </button>
                 </div>
-              );
-            })}
-
-            {/* Background (fixed bottom) */}
-            <div className="flex items-center gap-2 px-3 py-2 opacity-40 border-t border-white/5 mt-auto">
-              <ImageIcon className="w-3 h-3 text-white/50 shrink-0" />
-              <span className="text-xs text-white/50">背景 (固定)</span>
-            </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>

@@ -25,6 +25,8 @@ export default function GeneratePage() {
   // レイヤーモード：商品を合成せず背景のみ生成してエディタで配置
   const [layerMode, setLayerMode] = useState(false);
   const [editorBg, setEditorBg] = useState<string | null>(null);
+  const [aiLayout, setAiLayout] = useState<{ index: number; xPct: number; yPct: number; wPct: number; hPct: number }[]>([]);
+  const [layoutGenerating, setLayoutGenerating] = useState(false);
 
   // 画像をCanvas経由で圧縮（最大800px、JPEG 80%）
   const compressImage = useCallback((file: File): Promise<Blob> => {
@@ -95,8 +97,39 @@ export default function GeneratePage() {
       const images: string[] = data.images ?? [];
       setGeneratedImages(images);
 
-      // レイヤーモードは最初の画像を背景としてエディタを自動オープン
+      // レイヤーモード：商品画像がある場合は AI にレイアウトを提案させてエディタを開く
       if (layerMode && images.length > 0) {
+        if (referenceFiles.length > 0) {
+          setLayoutGenerating(true);
+          try {
+            // 商品画像を base64 に変換
+            const products = await Promise.all(
+              referenceFiles.map(async (file, index) => {
+                const compressed = await compressImage(file);
+                const ab = await compressed.arrayBuffer();
+                const bytes = new Uint8Array(ab);
+                let bin = "";
+                for (let i = 0; i < bytes.length; i += 8192) {
+                  bin += String.fromCharCode(...Array.from(bytes.subarray(i, i + 8192)));
+                }
+                return { index, base64: btoa(bin), mimeType: "image/jpeg" };
+              })
+            );
+            const layoutRes = await fetch("/api/generate/layout", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ backgroundUrl: images[0], products }),
+            });
+            if (layoutRes.ok) {
+              const { layout } = await layoutRes.json();
+              setAiLayout(layout ?? []);
+            }
+          } catch {
+            setAiLayout([]);
+          } finally {
+            setLayoutGenerating(false);
+          }
+        }
         setEditorBg(images[0]);
       }
     } catch (err) {
@@ -213,11 +246,17 @@ export default function GeneratePage() {
 
             <button
               onClick={handleGenerate}
-              disabled={isGenerating || !prompt.trim()}
+              disabled={isGenerating || layoutGenerating || !prompt.trim()}
               className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-bold text-base transition-all shadow-lg shadow-blue-900/30 flex items-center justify-center gap-2"
             >
               <Wand2 className="w-5 h-5" />
-              {isGenerating ? "AI が生成中... (30〜60秒)" : layerMode ? "背景を生成してエディタを開く" : "画像を生成する"}
+              {isGenerating
+              ? "AI が背景を生成中... (30〜60秒)"
+              : layoutGenerating
+              ? "AI がレイアウトを設計中..."
+              : layerMode
+              ? "背景を生成 → AI がレイアウト設計"
+              : "画像を生成する"}
             </button>
           </div>
 
@@ -234,11 +273,12 @@ export default function GeneratePage() {
       </div>
 
       {/* レイヤーエディタ（フルスクリーン） */}
-      {editorBg && (
+      {editorBg && !layoutGenerating && (
         <CompositeEditor
           backgroundUrl={editorBg}
           productImages={referencePreviews}
-          onClose={() => setEditorBg(null)}
+          initialLayout={aiLayout}
+          onClose={() => { setEditorBg(null); setAiLayout([]); }}
         />
       )}
     </>
