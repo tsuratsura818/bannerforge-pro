@@ -10,12 +10,14 @@ import {
   History,
   Settings,
   Zap,
+  Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "ダッシュボード", icon: LayoutDashboard },
   { href: "/generate", label: "バナー生成", icon: Wand2 },
+  { href: "/webdesign", label: "WEBデザイン生成", icon: Globe },
   { href: "/edit/remove-bg", label: "背景除去", icon: Eraser },
   { href: "/edit/crop", label: "切り抜き", icon: Crop },
   { href: "/history", label: "生成履歴", icon: History },
