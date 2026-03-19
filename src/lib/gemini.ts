@@ -40,6 +40,19 @@ export async function generateImage(
 
   const isTextToImage = referenceImages.length === 0;
 
+  // 商品画像がある場合：商品をバナーに自然に配置するよう明示的に指示
+  const compositePrompt =
+    referenceImages.length > 0
+      ? [
+          `以下の商品画像を使って、プロフェッショナルな広告バナーを生成してください。`,
+          `商品を画像の中に自然に配置し、商品が主役になるようにレイアウトしてください。`,
+          `背景・照明・影はバナーのコンセプトに合わせて自動生成してください。`,
+          ``,
+          `【バナーのコンセプト】`,
+          prompt,
+        ].join("\n")
+      : prompt;
+
   const contents =
     referenceImages.length > 0
       ? [
@@ -52,7 +65,7 @@ export async function generateImage(
                   mimeType: img.mimeType,
                 },
               })),
-              { text: prompt },
+              { text: compositePrompt },
             ],
           },
         ]

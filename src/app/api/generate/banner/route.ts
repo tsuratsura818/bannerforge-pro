@@ -2,16 +2,8 @@ import { NextResponse } from "next/server";
 import { generateImage } from "@/lib/gemini";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { z } from "zod";
 
 export const maxDuration = 60;
-
-const RequestSchema = z.object({
-  prompt: z.string().min(1).max(2000),
-  aspectRatio: z.string().default("1:1"),
-  resolution: z.string().default("1K"),
-  style: z.string().optional(),
-});
 
 export async function POST(request: Request) {
   const startTime = Date.now();
@@ -23,14 +15,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const params = RequestSchema.parse(body);
+    // multipart/form-data で商品画像も受け取る
+    const formData = await request.formData();
+    const prompt = formData.get("prompt") as string;
+    const aspectRatio = (formData.get("aspectRatio") as string) ?? "1:1";
+    const resolution = (formData.get("resolution") as string) ?? "1K";
+    const style = formData.get("style") as string | null;
+
+    if (!prompt?.trim()) {
+      return NextResponse.json({ error: "プロンプトが必要です" }, { status: 400 });
+    }
+
+    // 商品画像をBufferに変換
+    const productImages: { data: Buffer; mimeType: string }[] = [];
+    const files = formData.getAll("productImages") as File[];
+    for (const file of files) {
+      if (file.size > 0) {
+        productImages.push({
+          data: Buffer.from(await file.arrayBuffer()),
+          mimeType: file.type || "image/jpeg",
+        });
+      }
+    }
 
     // Gemini（Nano Banana 2）で画像生成
     const images = await generateImage({
-      prompt: params.prompt,
-      aspectRatio: params.aspectRatio,
-      resolution: params.resolution,
+      prompt,
+      aspectRatio,
+      resolution,
+      referenceImages: productImages,
     });
 
     if (images.length === 0) {
@@ -63,12 +76,12 @@ export async function POST(request: Request) {
 
     await supabase.from("generations").insert({
       user_id: user.id,
-      prompt: params.prompt,
-      params: { style: params.style, aspectRatio: params.aspectRatio, resolution: params.resolution },
+      prompt,
+      params: { style, aspectRatio, resolution, hasProductImage: productImages.length > 0 },
       output_images: uploadedUrls,
       model: "gemini-3.1-flash-image-preview",
-      resolution: params.resolution,
-      aspect_ratio: params.aspectRatio,
+      resolution,
+      aspect_ratio: aspectRatio,
       generation_type: "generate",
       processing_time_ms: processingTime,
     });
@@ -89,9 +102,6 @@ export async function POST(request: Request) {
         { error: "プロンプトがAIの安全フィルターに引っかかりました。別の内容で試してください。" },
         { status: 422 }
       );
-    }
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: "無効なパラメータです", details: error.issues }, { status: 400 });
     }
     return NextResponse.json(
       { error: `画像生成に失敗しました: ${msg.slice(0, 100)}` },

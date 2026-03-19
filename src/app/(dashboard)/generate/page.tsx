@@ -31,10 +31,16 @@ export default function GeneratePage() {
     setError("");
 
     try {
+      const formData = new FormData();
+      formData.append("prompt", prompt);
+      formData.append("aspectRatio", aspectRatio);
+      formData.append("resolution", resolution);
+      formData.append("style", style);
+      referenceFiles.forEach((f) => formData.append("productImages", f));
+
       const res = await fetch("/api/generate/banner", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, aspectRatio, resolution, style }),
+        body: formData,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "生成に失敗しました");
@@ -91,12 +97,17 @@ export default function GeneratePage() {
             />
           </div>
 
-          {/* 参照画像 */}
+          {/* 商品画像 */}
           <div className="bg-[#0f0f1e] rounded-xl border border-white/10 p-4 space-y-3">
-            <h3 className="font-semibold text-white text-sm">
-              参照画像
-              <span className="ml-2 text-xs font-normal text-white/40">オプション</span>
-            </h3>
+            <div>
+              <h3 className="font-semibold text-white text-sm">
+                商品画像
+                <span className="ml-2 text-xs font-normal text-white/40">オプション</span>
+              </h3>
+              <p className="text-xs text-white/30 mt-1">
+                アップした商品をバナーの中に自然に配置して生成します
+              </p>
+            </div>
             <ReferenceImageUploader
               files={referenceFiles}
               previews={referencePreviews}
