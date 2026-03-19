@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { X, Plus, Trash2, Download, Loader2, Type } from "lucide-react";
+import { X, Plus, Trash2, Download, Loader2, Type, FileImage } from "lucide-react";
 
 interface TextLayer {
   id: string;
@@ -39,6 +39,7 @@ export function TextEditor({ imageUrl, onClose }: TextEditorProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportingPsd, setExportingPsd] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const [dispSize, setDispSize] = useState({ w: 0, h: 0 });
   const dragRef = useRef<{
@@ -152,6 +153,33 @@ export function TextEditor({ imageUrl, onClose }: TextEditorProps) {
     }
   };
 
+  // Photoshop用PSD書き出し（テキストレイヤー付き）
+  const handleExportPsd = async () => {
+    setExportingPsd(true);
+    try {
+      const res = await fetch("/api/export/psd-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl, textLayers: layers }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "PSDのエクスポートに失敗しました");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "bannerforge-text.psd";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "エクスポートに失敗しました");
+    } finally {
+      setExportingPsd(false);
+    }
+  };
+
   const sel = layers.find(l => l.id === selectedId);
   const { w: dW, h: dH } = dispSize;
 
@@ -172,6 +200,15 @@ export function TextEditor({ imageUrl, onClose }: TextEditorProps) {
         >
           <Plus className="w-4 h-4" />
           テキスト追加
+        </button>
+        <button
+          onClick={handleExportPsd}
+          disabled={exportingPsd || layers.length === 0}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-700 hover:bg-violet-600 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition"
+          title="テキストが Photoshop で編集可能なレイヤー付き PSD"
+        >
+          {exportingPsd ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileImage className="w-4 h-4" />}
+          {exportingPsd ? "作成中..." : "PSD (Photoshop)"}
         </button>
         <button
           onClick={handleExport}
