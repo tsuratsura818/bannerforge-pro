@@ -15,27 +15,39 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // multipart/form-data で商品画像も受け取る
-    const formData = await request.formData();
-    const prompt = formData.get("prompt") as string;
-    const aspectRatio = (formData.get("aspectRatio") as string) ?? "1:1";
-    const resolution = (formData.get("resolution") as string) ?? "1K";
-    const style = formData.get("style") as string | null;
+    const contentType = request.headers.get("content-type") ?? "";
+    let prompt: string;
+    let aspectRatio: string;
+    let resolution: string;
+    let style: string | null;
+    const productImages: { data: Buffer; mimeType: string }[] = [];
+
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      prompt = formData.get("prompt") as string;
+      aspectRatio = (formData.get("aspectRatio") as string) ?? "1:1";
+      resolution = (formData.get("resolution") as string) ?? "1K";
+      style = formData.get("style") as string | null;
+      const files = formData.getAll("productImages") as File[];
+      for (const file of files) {
+        if (file.size > 0) {
+          productImages.push({
+            data: Buffer.from(await file.arrayBuffer()),
+            mimeType: file.type || "image/jpeg",
+          });
+        }
+      }
+    } else {
+      // JSON フォールバック（後方互換）
+      const body = await request.json();
+      prompt = body.prompt;
+      aspectRatio = body.aspectRatio ?? "1:1";
+      resolution = body.resolution ?? "1K";
+      style = body.style ?? null;
+    }
 
     if (!prompt?.trim()) {
       return NextResponse.json({ error: "プロンプトが必要です" }, { status: 400 });
-    }
-
-    // 商品画像をBufferに変換
-    const productImages: { data: Buffer; mimeType: string }[] = [];
-    const files = formData.getAll("productImages") as File[];
-    for (const file of files) {
-      if (file.size > 0) {
-        productImages.push({
-          data: Buffer.from(await file.arrayBuffer()),
-          mimeType: file.type || "image/jpeg",
-        });
-      }
     }
 
     // Gemini（Nano Banana 2）で画像生成
