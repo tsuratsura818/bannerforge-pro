@@ -37,12 +37,16 @@ export default function GeneratePage() {
     try {
       const res = await fetch(url);
       if (!res.ok) {
-        throw new Error(`Pollinations.ai エラー: HTTP ${res.status} ${res.statusText}`);
+        const body = await res.text().catch(() => "");
+        throw new Error(
+          `Pollinations.ai HTTP ${res.status} ${res.statusText}` +
+          (body ? ` — ${body.slice(0, 300)}` : "")
+        );
       }
       const contentType = res.headers.get("content-type") ?? "";
       if (!contentType.startsWith("image/")) {
         const body = await res.text();
-        throw new Error(`予期しないレスポンス (${contentType}): ${body.slice(0, 200)}`);
+        throw new Error(`予期しないレスポンス (${contentType}): ${body.slice(0, 300)}`);
       }
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);
