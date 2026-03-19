@@ -97,15 +97,20 @@ HTMLコードのみ出力してください。<!DOCTYPE html> で始まり </htm
 説明文、マークダウンのコードブロック（\`\`\`）は絶対に含めないこと。`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      // gemini-2.5-flash は内部思考にトークンを消費するため lite 版を使用
+      model: "gemini-2.5-flash-lite",
       contents: [{ role: "user", parts: [{ text: systemPrompt }] }],
       config: {
         temperature: 0.7,
-        maxOutputTokens: 8192,
+        maxOutputTokens: 16384,
       },
     });
 
-    let html = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    // 思考パーツ（thought: true）を除いた実際の出力テキストのみ取得
+    const parts = response.candidates?.[0]?.content?.parts ?? [];
+    const textParts = parts.filter((p: { thought?: boolean }) => !p.thought);
+    let html = textParts.map((p: { text?: string }) => p.text ?? "").join("")
+      || parts[0]?.text ?? "";
 
     // マークダウンコードブロックを除去
     html = html.replace(/^```[\w]*\n?/m, "").replace(/\n?```\s*$/m, "").trim();

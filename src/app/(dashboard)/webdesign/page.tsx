@@ -350,7 +350,7 @@ export default function WebDesignPage() {
                 <span className="mx-1">=</span>
                 計 {usage.totalTokens.toLocaleString()} tokens
               </span>
-              <span className="text-white/20 ml-auto text-[10px]">Gemini 2.5 Flash · $0.075/$0.30 per 1M tokens</span>
+              <span className="text-white/20 ml-auto text-[10px]">Gemini 2.5 Flash Lite · $0.075/$0.30 per 1M tokens</span>
             </div>
           )}
 
@@ -374,7 +374,7 @@ export default function WebDesignPage() {
                   <iframe
                     ref={iframeRef}
                     srcDoc={html}
-                    sandbox="allow-scripts"
+                    sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
                     className={`bg-white shadow-2xl ${
                       previewMode === "mobile"
                         ? "w-[390px] h-[844px] rounded-3xl"
