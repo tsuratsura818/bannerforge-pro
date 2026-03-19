@@ -21,6 +21,31 @@ export default function GeneratePage() {
   const [showTemplates, setShowTemplates] = useState(false);
   const [error, setError] = useState("");
 
+  // 画像をCanvas経由で圧縮（最大800px、JPEG 80%）
+  const compressImage = useCallback((file: File): Promise<Blob> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const MAX = 800;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          const scale = MAX / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => resolve(blob ?? file), "image/jpeg", 0.8);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  }, []);
+
   const handleGenerate = useCallback(async () => {
     if (!prompt.trim()) {
       setError("プロンプトを入力してください");
@@ -36,12 +61,28 @@ export default function GeneratePage() {
       formData.append("aspectRatio", aspectRatio);
       formData.append("resolution", resolution);
       formData.append("style", style);
-      referenceFiles.forEach((f) => formData.append("productImages", f));
+
+      // 商品画像を圧縮してアップロード
+      for (let i = 0; i < referenceFiles.length; i++) {
+        const compressed = await compressImage(referenceFiles[i]);
+        formData.append("productImages", compressed, `product_${i}.jpg`);
+      }
 
       const res = await fetch("/api/generate/banner", {
         method: "POST",
         body: formData,
       });
+
+      // レスポンスが JSON でない場合（413 Entity Too Large 等）の対応
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(
+          res.status === 413
+            ? "画像サイズが大きすぎます。枚数を減らしてください。"
+            : `サーバーエラー (${res.status})`
+        );
+      }
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "生成に失敗しました");
       setGeneratedImages(data.images ?? []);
@@ -50,7 +91,7 @@ export default function GeneratePage() {
     } finally {
       setIsGenerating(false);
     }
-  }, [prompt, aspectRatio, resolution, style, referenceFiles]);
+  }, [prompt, aspectRatio, resolution, style, referenceFiles, compressImage]);
 
   return (
     <div className="h-full flex flex-col gap-6">
