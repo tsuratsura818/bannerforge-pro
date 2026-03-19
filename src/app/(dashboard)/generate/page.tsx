@@ -50,7 +50,7 @@ export default function GeneratePage() {
     } finally {
       setIsGenerating(false);
     }
-  }, [prompt, aspectRatio, resolution, style]);
+  }, [prompt, aspectRatio, resolution, style, referenceFiles]);
 
   return (
     <div className="h-full flex flex-col gap-6">
