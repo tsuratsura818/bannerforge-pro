@@ -109,8 +109,8 @@ HTMLコードのみ出力してください。<!DOCTYPE html> で始まり </htm
     // 思考パーツ（thought: true）を除いた実際の出力テキストのみ取得
     const parts = response.candidates?.[0]?.content?.parts ?? [];
     const textParts = parts.filter((p: { thought?: boolean }) => !p.thought);
-    let html = textParts.map((p: { text?: string }) => p.text ?? "").join("")
-      || parts[0]?.text ?? "";
+    const joined = textParts.map((p: { text?: string }) => p.text ?? "").join("");
+    let html = joined || (parts[0]?.text ?? "");
 
     // マークダウンコードブロックを除去
     html = html.replace(/^```[\w]*\n?/m, "").replace(/\n?```\s*$/m, "").trim();
