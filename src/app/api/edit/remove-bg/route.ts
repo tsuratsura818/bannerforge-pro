@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       prompt: `背景除去 (mode: ${mode})`,
       params: { mode, background },
       output_images: [urlData.publicUrl],
-      model: "gemini-2.0-flash-exp",
+      model: "gemini-2.5-flash-exp",
       generation_type: "remove-bg",
     });
 

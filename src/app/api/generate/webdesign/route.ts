@@ -97,7 +97,7 @@ HTMLコードのみ出力してください。<!DOCTYPE html> で始まり </htm
 説明文、マークダウンのコードブロック（\`\`\`）は絶対に含めないこと。`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: systemPrompt }] }],
       config: {
         temperature: 0.7,

@@ -18,9 +18,9 @@ interface UsageInfo {
   totalTokens: number;
 }
 
-// Gemini 2.0 Flash 料金（$USD / 1M tokens）
-const PRICE_INPUT_PER_1M  = 0.10;
-const PRICE_OUTPUT_PER_1M = 0.40;
+// Gemini 2.5 Flash 料金（$USD / 1M tokens）
+const PRICE_INPUT_PER_1M  = 0.075;
+const PRICE_OUTPUT_PER_1M = 0.30;
 const JPY_RATE = 150; // 概算レート
 
 // ── Constants ──────────────────────────────────────────
@@ -350,7 +350,7 @@ export default function WebDesignPage() {
                 <span className="mx-1">=</span>
                 計 {usage.totalTokens.toLocaleString()} tokens
               </span>
-              <span className="text-white/20 ml-auto text-[10px]">Gemini 2.0 Flash · $0.10/$0.40 per 1M tokens</span>
+              <span className="text-white/20 ml-auto text-[10px]">Gemini 2.5 Flash · $0.075/$0.30 per 1M tokens</span>
             </div>
           )}
 

@@ -63,7 +63,7 @@ Reply ONLY with a valid JSON array, nothing else:
 - wPct/hPct: size as percentage of canvas dimensions`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       contents: [{
         role: "user",
         parts: [
