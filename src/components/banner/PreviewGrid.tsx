@@ -1,7 +1,7 @@
 "use client";
 
 import { ImagePreview } from "@/components/shared/ImagePreview";
-import { DownloadButton } from "@/components/shared/DownloadButton";
+import { ExportButton } from "@/components/shared/ExportButton";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { RefreshCw, Heart } from "lucide-react";
 
@@ -40,7 +40,7 @@ export function PreviewGrid({ images, isLoading, onRegenerate }: PreviewGridProp
             <ImagePreview src={url} alt={`Generated image ${i + 1}`} className="w-full h-full" />
           </div>
           <div className="flex items-center gap-2 p-3 border-t border-gray-200 dark:border-gray-800">
-            <DownloadButton imageUrl={url} filename={`bannerforge-${Date.now()}.png`} />
+            <ExportButton imageUrl={url} basename={`bannerforge-${i + 1}`} />
             <button className="flex items-center gap-1.5 px-3 py-2 text-gray-600 dark:text-gray-400 hover:text-red-500 transition text-sm">
               <Heart className="w-4 h-4" />
               お気に入り
