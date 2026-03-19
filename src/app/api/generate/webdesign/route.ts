@@ -1,43 +1,93 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { GoogleGenAI } from "@google/genai";
+import { StitchToolClient } from "@google/stitch-sdk";
+import { Stitch } from "@google/stitch-sdk";
 
 export const maxDuration = 60;
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+// ── ラベルマップ ──────────────────────────────────────
 
 const SITE_TYPE_LABELS: Record<string, string> = {
-  lp: "ランディングページ（LP）",
-  corporate: "コーポレートサイト",
-  ec: "ECサイト・ショッピングサイト",
-  portfolio: "ポートフォリオ・作品紹介サイト",
-  saas: "SaaS・プロダクト紹介サイト",
-  blog: "ブログ・メディアサイト",
+  lp:        "landing page (LP)",
+  corporate: "corporate website",
+  ec:        "e-commerce / shopping website",
+  portfolio: "portfolio / work showcase site",
+  saas:      "SaaS / product website",
+  blog:      "blog / media website",
 };
 
 const STYLE_LABELS: Record<string, string> = {
-  minimal: "ミニマル・シンプル（余白多め、細いフォント）",
-  modern: "モダン・洗練（グラデーション、カード型レイアウト）",
-  bold: "ボールド・インパクト（大きい文字、強いコントラスト）",
-  dark: "ダーク・プレミアム（黒背景、光るアクセント）",
-  creative: "クリエイティブ・個性的（非対称レイアウト、豊かな表現）",
-  clean: "クリーン・ビジネス（整然、信頼感、プロフェッショナル）",
+  minimal:  "minimal and simple (lots of whitespace, thin fonts)",
+  modern:   "modern and refined (gradients, card-based layout)",
+  bold:     "bold and impactful (large text, strong contrast)",
+  dark:     "dark and premium (dark background, glowing accents)",
+  creative: "creative and unique (asymmetric layout, expressive)",
+  clean:    "clean and business-like (structured, trustworthy, professional)",
 };
 
 const SECTION_LABELS: Record<string, string> = {
-  nav: "ナビゲーションバー",
-  hero: "ヒーローセクション（メインビジュアル）",
-  features: "特徴・機能紹介",
-  stats: "実績・数字",
-  pricing: "料金プラン",
-  testimonials: "お客様の声",
-  faq: "よくある質問",
-  team: "チーム・メンバー紹介",
-  contact: "お問い合わせフォーム",
-  footer: "フッター",
+  nav:          "navigation bar",
+  hero:         "hero section (main visual)",
+  features:     "features / benefits section",
+  stats:        "stats / achievements / numbers section",
+  pricing:      "pricing plans section",
+  testimonials: "customer testimonials / reviews",
+  faq:          "FAQ section",
+  team:         "team / member introduction",
+  contact:      "contact form",
+  footer:       "footer",
 };
 
+const ANIMATION_LABELS: Record<string, string> = {
+  none:   "No animations. Purely static design.",
+  subtle: "Subtle animations only: hover transitions, gentle fade-ins.",
+  rich:   "Rich animations: scroll-triggered reveals, parallax effects, particle effects, loading animations.",
+};
+
+// ── ヘルパー ──────────────────────────────────────────
+
+function buildStitchPrompt(params: {
+  prompt: string;
+  siteType: string;
+  style: string;
+  primaryColor: string;
+  sections: string[];
+  animation: string;
+}): string {
+  const { prompt, siteType, style, primaryColor, sections, animation } = params;
+  const sectionList = sections.map(s => `- ${SECTION_LABELS[s] ?? s}`).join("\n");
+
+  return `Create a complete, full-page Japanese ${SITE_TYPE_LABELS[siteType] ?? siteType} design.
+
+Design style: ${STYLE_LABELS[style] ?? style}
+Primary accent color: ${primaryColor}
+Animation: ${ANIMATION_LABELS[animation] ?? animation}
+
+Include these sections from top to bottom:
+${sectionList}
+
+Website concept (in Japanese content):
+${prompt}
+
+Requirements:
+- All text content must be in Japanese
+- Professional, polished visual design
+- Realistic placeholder content appropriate for the concept
+- Contact forms are decorative only (no actual submission needed)
+- Full-page vertical layout showing all specified sections`;
+}
+
+// ── Route Handler ────────────────────────────────────
+
 export async function POST(request: Request) {
+  const apiKey = process.env.STITCH_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "STITCH_API_KEY が設定されていません。stitch.withgoogle.com でAPIキーを取得し、環境変数に設定してください。" },
+      { status: 503 }
+    );
+  }
+
   try {
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -58,91 +108,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "プロンプトが必要です" }, { status: 400 });
     }
 
-    const sectionList = sections.map(s => `- ${SECTION_LABELS[s] ?? s}`).join("\n");
-    const siteLabel = SITE_TYPE_LABELS[siteType] ?? siteType;
-    const styleLabel = STYLE_LABELS[style] ?? style;
-    const animationInstruction =
-      animation === "none"
-        ? "アニメーションは一切使用しない。transition, animation, @keyframes, AOS, GSAP などすべて不可。静的なHTMLのみ。"
-        : animation === "subtle"
-        ? "ホバー時のtransition（色・影・scale）とfade-inのみ使用。スクロール連動アニメーションは不要。"
-        : "CSS @keyframes / Intersection Observer によるスクロール連動アニメーション、パーティクル、視差スクロール（parallax）、ローディングアニメーションなど積極的に使用してリッチな体験を提供する。";
+    // Stitch クライアントを初期化してプロジェクト作成 → 画面生成
+    const client = new StitchToolClient({ apiKey });
+    const stitch = new Stitch(client);
 
-    const systemPrompt = `You are an expert web designer and frontend developer specializing in modern, professional Japanese websites.
+    const project = await stitch.createProject("BannerForge Web Design");
 
-Generate a complete, self-contained HTML page with the following specifications:
+    const stitchPrompt = buildStitchPrompt({ prompt, siteType, style, primaryColor, sections, animation });
 
-## サイト概要
-- タイプ: ${siteLabel}
-- コンセプト: ${prompt}
+    const screen = await project.generate(
+      stitchPrompt,
+      "DESKTOP",
+      "GEMINI_3_FLASH"
+    );
 
-## デザインスタイル
-${styleLabel}
+    // HTML と スクリーンショット URL を並列取得
+    const [htmlUrl, imageUrl] = await Promise.all([
+      screen.getHtml(),
+      screen.getImage(),
+    ]);
 
-## カラーテーマ
-- プライマリカラー: ${primaryColor}
-- このカラーをアクセントとして効果的に使用してください
+    // HTML は URL なので実際のコンテンツを取得
+    const htmlRes = await fetch(htmlUrl);
+    if (!htmlRes.ok) throw new Error("生成されたHTMLの取得に失敗しました");
+    const html = await htmlRes.text();
 
-## 含めるセクション（上から順番に）
-${sectionList}
-
-## アニメーション指示
-${animationInstruction}
-
-## 技術要件
-- 完全な HTML5 ドキュメント（<!DOCTYPE html> から </html> まで）
-- Tailwind CSS CDN を使用: <script src="https://cdn.tailwindcss.com"></script>
-- Google Fonts を CDN で読み込む（デザインに合ったフォントを選択）
-- 外部画像は使用しない（CSS グラデーション・SVG・絵文字で代用）
-- 完全レスポンシブ対応（モバイルファースト）
-- スムーズスクロール（scroll-behavior: smooth）
-- すべてのテキストは日本語
-- コンテンツはコンセプトに合ったリアルな仮テキストを入れる
-- フォームは見た目のみ（実際の送信機能不要）
-- プライマリカラーは Tailwind の inline style または custom color で適用
-
-## 出力形式
-HTMLコードのみ出力してください。<!DOCTYPE html> で始まり </html> で終わること。
-説明文、マークダウンのコードブロック（\`\`\`）は絶対に含めないこと。`;
-
-    const response = await ai.models.generateContent({
-      // gemini-2.5-flash は内部思考にトークンを消費するため lite 版を使用
-      model: "gemini-2.5-flash-lite",
-      contents: [{ role: "user", parts: [{ text: systemPrompt }] }],
-      config: {
-        temperature: 0.7,
-        maxOutputTokens: 16384,
-      },
-    });
-
-    // 思考パーツ（thought: true）を除いた実際の出力テキストのみ取得
-    const parts = response.candidates?.[0]?.content?.parts ?? [];
-    const textParts = parts.filter((p: { thought?: boolean }) => !p.thought);
-    const joined = textParts.map((p: { text?: string }) => p.text ?? "").join("");
-    let html = joined || (parts[0]?.text ?? "");
-
-    // マークダウンコードブロックを除去
-    html = html.replace(/^```[\w]*\n?/m, "").replace(/\n?```\s*$/m, "").trim();
-
-    // <!DOCTYPE html> より前のテキストを除去
-    const doctypeIdx = html.indexOf("<!DOCTYPE");
-    if (doctypeIdx > 0) html = html.slice(doctypeIdx);
-    const doctypeLower = html.toLowerCase().indexOf("<!doctype");
-    if (doctypeLower > 0) html = html.slice(doctypeLower);
-
-    if (!html.toLowerCase().includes("<!doctype")) {
-      throw new Error("有効なHTMLが生成されませんでした。再度お試しください。");
-    }
-
-    const usage = {
-      inputTokens:  response.usageMetadata?.promptTokenCount     ?? 0,
-      outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
-      totalTokens:  response.usageMetadata?.totalTokenCount      ?? 0,
-    };
-
-    return NextResponse.json({ html, usage });
+    return NextResponse.json({ html, imageUrl });
   } catch (error) {
-    console.error("Web design generation error:", error);
+    console.error("Stitch web design generation error:", error);
     const msg = error instanceof Error ? error.message : "生成に失敗しました";
     return NextResponse.json({ error: msg }, { status: 500 });
   }

@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback } from "react";
 import {
   Globe, Wand2, Monitor, Smartphone, Code2,
-  Download, Copy, Check, Loader2, RefreshCw, Info, FileText,
+  Download, Copy, Check, Loader2, RefreshCw, FileText,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────
@@ -13,16 +13,7 @@ type SiteStyle = "minimal" | "modern" | "bold" | "dark" | "creative" | "clean";
 type AnimationLevel = "none" | "subtle" | "rich";
 type PreviewMode = "desktop" | "mobile" | "code";
 
-interface UsageInfo {
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-}
-
-// Gemini 2.5 Flash 料金（$USD / 1M tokens）
-const PRICE_INPUT_PER_1M  = 0.075;
-const PRICE_OUTPUT_PER_1M = 0.30;
-const JPY_RATE = 150; // 概算レート
+// Stitch は無料（月 350 生成 / Flash モデル）のためコスト表示不要
 
 // ── Constants ──────────────────────────────────────────
 
@@ -90,15 +81,9 @@ export default function WebDesignPage() {
   const [error, setError] = useState("");
   const [previewMode, setPreviewMode] = useState<PreviewMode>("desktop");
   const [copied, setCopied] = useState(false);
-  const [usage, setUsage] = useState<UsageInfo | null>(null);
+  const [imageUrl, setImageUrl] = useState("");
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  const estimatedCostUsd = usage
-    ? (usage.inputTokens  / 1_000_000) * PRICE_INPUT_PER_1M
-    + (usage.outputTokens / 1_000_000) * PRICE_OUTPUT_PER_1M
-    : 0;
-  const estimatedCostJpy = estimatedCostUsd * JPY_RATE;
 
   const toggleSection = (val: string) => {
     setSections(prev =>
@@ -122,7 +107,7 @@ export default function WebDesignPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "生成に失敗しました");
       setHtml(data.html ?? "");
-      setUsage(data.usage ?? null);
+      setImageUrl(data.imageUrl ?? "");
       setPreviewMode("desktop");
     } catch (err) {
       setError(err instanceof Error ? err.message : "エラーが発生しました");
@@ -380,37 +365,14 @@ export default function WebDesignPage() {
             </div>
           )}
 
-          {/* コスト表示 */}
-          {usage && (
-            <div className="flex items-center gap-3 px-4 py-2 bg-[#0f0f1e] rounded-xl border border-white/10 text-xs shrink-0">
-              <Info className="w-3.5 h-3.5 text-white/30 shrink-0" />
-              <span className="text-white/40">今回の生成コスト（推定）:</span>
-              <span className="text-white font-semibold">
-                ${estimatedCostUsd.toFixed(4)}
-                <span className="text-white/40 font-normal ml-1">
-                  (≈ ¥{estimatedCostJpy.toFixed(2)})
-                </span>
-              </span>
-              <span className="text-white/20">|</span>
-              <span className="text-white/40">
-                入力 {usage.inputTokens.toLocaleString()} tokens
-                <span className="mx-1">+</span>
-                出力 {usage.outputTokens.toLocaleString()} tokens
-                <span className="mx-1">=</span>
-                計 {usage.totalTokens.toLocaleString()} tokens
-              </span>
-              <span className="text-white/20 ml-auto text-[10px]">Gemini 2.5 Flash Lite · $0.075/$0.30 per 1M tokens</span>
-            </div>
-          )}
-
           {/* プレビューエリア */}
           <div className="flex-1 min-h-0 rounded-xl overflow-hidden border border-white/10 bg-gray-100">
             {isGenerating ? (
-              <div className="h-full flex flex-col items-center justify-center gap-4 text-gray-500 bg-[#0f0f1e]">
+              <div className="h-full flex flex-col items-center justify-center gap-4 bg-[#0f0f1e]">
                 <Loader2 className="w-10 h-10 text-indigo-400 animate-spin" />
                 <div className="text-center">
-                  <p className="font-medium text-white">AIがデザインを生成中...</p>
-                  <p className="text-sm text-white/40 mt-1">Gemini がHTMLを生成しています（30〜60秒）</p>
+                  <p className="font-medium text-white">Stitch がデザインを生成中...</p>
+                  <p className="text-sm text-white/40 mt-1">Google Stitch AI が生成しています（30〜60秒）</p>
                 </div>
               </div>
             ) : html ? (
@@ -418,7 +380,18 @@ export default function WebDesignPage() {
                 <pre className="h-full overflow-auto bg-[#0d0d1a] text-green-300 text-xs p-4 font-mono leading-relaxed">
                   <code>{html}</code>
                 </pre>
+              ) : previewMode === "desktop" && imageUrl ? (
+                /* デスクトップ：Stitch が生成したスクリーンショットを表示 */
+                <div className="h-full overflow-auto bg-gray-200 flex justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={imageUrl}
+                    alt="Stitch generated design"
+                    className="w-full object-contain object-top"
+                  />
+                </div>
               ) : (
+                /* モバイル or フォールバック：HTML を iframe でレンダリング */
                 <div className={`h-full flex items-start justify-center bg-gray-200 overflow-auto ${previewMode === "mobile" ? "py-4" : ""}`}>
                   <iframe
                     ref={iframeRef}
