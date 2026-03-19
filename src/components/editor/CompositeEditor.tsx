@@ -134,7 +134,7 @@ export function CompositeEditor({
   // ── Layer utilities ──
 
   const update = useCallback((id: string, patch: Partial<Layer>) =>
-    setLayers(prev => prev.map(l => l.id === id ? { ...l, ...patch } : l)), []);
+    setLayers(prev => prev.map(l => l.id === id ? ({ ...l, ...patch } as Layer) : l)), []);
 
   const remove = useCallback((id: string) => {
     setLayers(prev => prev.filter(l => l.id !== id));
