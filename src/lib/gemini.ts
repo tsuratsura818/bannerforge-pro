@@ -16,18 +16,35 @@ interface GeneratedImage {
   mimeType: string;
 }
 
+// ImageConfig でサポートされているアスペクト比に変換
+function normalizeAspectRatio(ratio: string): string {
+  const supported = ["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"];
+  if (supported.includes(ratio)) return ratio;
+  // 非サポート比（4:5, 5:4 等）は最も近い値に変換
+  const map: Record<string, string> = {
+    "4:5": "3:4",
+    "5:4": "4:3",
+  };
+  return map[ratio] ?? "1:1";
+}
+
 export async function generateImage(
   params: GenerateImageParams
 ): Promise<GeneratedImage[]> {
-  const { prompt, aspectRatio = "1:1", resolution = "1K", referenceImages = [] } = params;
+  const {
+    prompt,
+    aspectRatio = "1:1",
+    resolution = "1K",
+    referenceImages = [],
+  } = params;
 
-  // 参照画像がある場合：Content配列（role+parts形式）
-  // 参照画像がない場合：シンプルな文字列プロンプト
+  const isTextToImage = referenceImages.length === 0;
+
   const contents =
     referenceImages.length > 0
       ? [
           {
-            role: "user",
+            role: "user" as const,
             parts: [
               ...referenceImages.map((img) => ({
                 inlineData: {
@@ -41,27 +58,30 @@ export async function generateImage(
         ]
       : prompt;
 
-  const config: Record<string, unknown> = {
-    responseModalities: ["TEXT", "IMAGE"],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const config: any = {
+    responseModalities: ["IMAGE"],
   };
 
-  // テキスト→画像生成時のみ imageConfig を付与
-  if (referenceImages.length === 0) {
-    config.imageConfig = { aspectRatio, imageSize: resolution };
+  if (isTextToImage) {
+    config.imageConfig = {
+      aspectRatio: normalizeAspectRatio(aspectRatio),
+      imageSize: resolution === "512" ? "1K" : resolution, // 512は1Kにフォールバック
+    };
   }
 
-  const response = await (ai.models.generateContent as Function)({
+  const response = await ai.models.generateContent({
     model: IMAGE_MODEL,
-    contents,
+    contents: contents as Parameters<typeof ai.models.generateContent>[0]["contents"],
     config,
   });
 
   const images: GeneratedImage[] = [];
   for (const part of response.candidates?.[0]?.content?.parts ?? []) {
-    if (part.inlineData) {
+    if (part.inlineData?.data) {
       images.push({
-        data: Buffer.from(part.inlineData.data!, "base64"),
-        mimeType: part.inlineData.mimeType!,
+        data: Buffer.from(part.inlineData.data, "base64"),
+        mimeType: part.inlineData.mimeType ?? "image/jpeg",
       });
     }
   }

@@ -41,10 +41,14 @@ export async function POST(request: Request) {
     for (let i = 0; i < images.length; i++) {
       const ext = images[i].mimeType.includes("png") ? "png" : "jpg";
       const filename = `${user.id}/${Date.now()}_${i}.${ext}`;
-      const { data } = await supabase.storage
+      const { data, error: uploadError } = await supabase.storage
         .from("generations")
         .upload(filename, images[i].data, { contentType: images[i].mimeType });
 
+      if (uploadError) {
+        console.error("Supabase upload error:", uploadError);
+        throw new Error(`ストレージへのアップロードに失敗: ${uploadError.message}`);
+      }
       if (data) {
         const { data: urlData } = supabase.storage
           .from("generations")
