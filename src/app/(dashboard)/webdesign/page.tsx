@@ -3,13 +3,14 @@
 import { useState, useRef, useCallback } from "react";
 import {
   Globe, Wand2, Monitor, Smartphone, Code2,
-  Download, Copy, Check, Loader2, RefreshCw, Info,
+  Download, Copy, Check, Loader2, RefreshCw, Info, FileText,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────
 
 type SiteType = "lp" | "corporate" | "ec" | "portfolio" | "saas" | "blog";
 type SiteStyle = "minimal" | "modern" | "bold" | "dark" | "creative" | "clean";
+type AnimationLevel = "none" | "subtle" | "rich";
 type PreviewMode = "desktop" | "mobile" | "code";
 
 interface UsageInfo {
@@ -69,6 +70,12 @@ const SECTIONS = [
 
 const DEFAULT_SECTIONS = ["nav", "hero", "features", "footer"];
 
+const ANIMATION_LEVELS: { value: AnimationLevel; label: string; desc: string }[] = [
+  { value: "none",   label: "なし",       desc: "静的・アニメーションなし" },
+  { value: "subtle", label: "ひかえめ",   desc: "ホバー・フェードイン程度" },
+  { value: "rich",   label: "リッチ",     desc: "スクロール連動・パーティクル等" },
+];
+
 // ── Component ──────────────────────────────────────────
 
 export default function WebDesignPage() {
@@ -77,6 +84,7 @@ export default function WebDesignPage() {
   const [style, setStyle] = useState<SiteStyle>("modern");
   const [primaryColor, setPrimaryColor] = useState("#6366F1");
   const [sections, setSections] = useState<string[]>(DEFAULT_SECTIONS);
+  const [animation, setAnimation] = useState<AnimationLevel>("subtle");
   const [isGenerating, setIsGenerating] = useState(false);
   const [html, setHtml] = useState("");
   const [error, setError] = useState("");
@@ -109,7 +117,7 @@ export default function WebDesignPage() {
       const res = await fetch("/api/generate/webdesign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, siteType, style, primaryColor, sections }),
+        body: JSON.stringify({ prompt, siteType, style, primaryColor, sections, animation }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "生成に失敗しました");
@@ -121,7 +129,7 @@ export default function WebDesignPage() {
     } finally {
       setIsGenerating(false);
     }
-  }, [prompt, siteType, style, primaryColor, sections]);
+  }, [prompt, siteType, style, primaryColor, sections, animation]);
 
   const handleDownload = () => {
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
@@ -137,6 +145,17 @@ export default function WebDesignPage() {
     await navigator.clipboard.writeText(html);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleExportPdf = () => {
+    // 生成 HTML を新しいウィンドウで開き、印刷ダイアログ（PDF保存）を起動
+    const win = window.open("", "_blank");
+    if (!win) { alert("ポップアップをブロックしています。許可してください。"); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    // DOM が描画されるのを待ってから print
+    setTimeout(() => { win.print(); }, 800);
   };
 
   return (
@@ -244,6 +263,27 @@ export default function WebDesignPage() {
             </div>
           </div>
 
+          {/* アニメーション */}
+          <div className="bg-[#0f0f1e] rounded-xl border border-white/10 p-4">
+            <h3 className="font-semibold text-white text-sm mb-3">アニメーション</h3>
+            <div className="grid grid-cols-3 gap-2">
+              {ANIMATION_LEVELS.map(a => (
+                <button
+                  key={a.value}
+                  onClick={() => setAnimation(a.value)}
+                  className={`p-2.5 rounded-lg border text-center transition ${
+                    animation === a.value
+                      ? "border-indigo-500 bg-indigo-500/20 text-indigo-300"
+                      : "border-white/10 bg-white/5 text-white/60 hover:border-white/30"
+                  }`}
+                >
+                  <div className="font-semibold text-xs">{a.label}</div>
+                  <div className="text-[10px] text-white/40 mt-0.5 leading-tight">{a.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* プロンプト */}
           <div className="bg-[#0f0f1e] rounded-xl border border-white/10 p-4">
             <h3 className="font-semibold text-white text-sm mb-2">サイトのコンセプト</h3>
@@ -318,6 +358,15 @@ export default function WebDesignPage() {
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
                 {copied ? "コピー済み" : "HTMLをコピー"}
+              </button>
+
+              {/* PDF */}
+              <button
+                onClick={handleExportPdf}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-700 hover:bg-rose-600 text-white rounded-lg text-xs font-medium transition"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                PDFで保存
               </button>
 
               {/* ダウンロード */}

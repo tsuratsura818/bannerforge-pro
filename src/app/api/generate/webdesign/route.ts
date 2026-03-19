@@ -45,12 +45,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { prompt, siteType, style, primaryColor, sections } = await request.json() as {
+    const { prompt, siteType, style, primaryColor, sections, animation } = await request.json() as {
       prompt: string;
       siteType: string;
       style: string;
       primaryColor: string;
       sections: string[];
+      animation: "none" | "subtle" | "rich";
     };
 
     if (!prompt?.trim()) {
@@ -60,6 +61,12 @@ export async function POST(request: Request) {
     const sectionList = sections.map(s => `- ${SECTION_LABELS[s] ?? s}`).join("\n");
     const siteLabel = SITE_TYPE_LABELS[siteType] ?? siteType;
     const styleLabel = STYLE_LABELS[style] ?? style;
+    const animationInstruction =
+      animation === "none"
+        ? "アニメーションは一切使用しない。transition, animation, @keyframes, AOS, GSAP などすべて不可。静的なHTMLのみ。"
+        : animation === "subtle"
+        ? "ホバー時のtransition（色・影・scale）とfade-inのみ使用。スクロール連動アニメーションは不要。"
+        : "CSS @keyframes / Intersection Observer によるスクロール連動アニメーション、パーティクル、視差スクロール（parallax）、ローディングアニメーションなど積極的に使用してリッチな体験を提供する。";
 
     const systemPrompt = `You are an expert web designer and frontend developer specializing in modern, professional Japanese websites.
 
@@ -79,6 +86,9 @@ ${styleLabel}
 ## 含めるセクション（上から順番に）
 ${sectionList}
 
+## アニメーション指示
+${animationInstruction}
+
 ## 技術要件
 - 完全な HTML5 ドキュメント（<!DOCTYPE html> から </html> まで）
 - Tailwind CSS CDN を使用: <script src="https://cdn.tailwindcss.com"></script>
@@ -86,7 +96,6 @@ ${sectionList}
 - 外部画像は使用しない（CSS グラデーション・SVG・絵文字で代用）
 - 完全レスポンシブ対応（モバイルファースト）
 - スムーズスクロール（scroll-behavior: smooth）
-- ホバーアニメーション（transition / transform）
 - すべてのテキストは日本語
 - コンテンツはコンセプトに合ったリアルな仮テキストを入れる
 - フォームは見た目のみ（実際の送信機能不要）
