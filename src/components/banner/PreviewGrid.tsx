@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { ImagePreview } from "@/components/shared/ImagePreview";
 import { ExportButton } from "@/components/shared/ExportButton";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
-import { RefreshCw, Heart } from "lucide-react";
+import { RefreshCw, Heart, Layers, Loader2 } from "lucide-react";
 
 interface PreviewGridProps {
   images: string[];
@@ -12,6 +13,34 @@ interface PreviewGridProps {
 }
 
 export function PreviewGrid({ images, isLoading, onRegenerate }: PreviewGridProps) {
+  const [exportingLayers, setExportingLayers] = useState(false);
+
+  const handleExportLayers = async () => {
+    setExportingLayers(true);
+    try {
+      const res = await fetch("/api/export/psd-layers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrls: images }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "エクスポートに失敗しました");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "bannerforge-layers.psd";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "エクスポートに失敗しました");
+    } finally {
+      setExportingLayers(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900 rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-700">
@@ -34,6 +63,22 @@ export function PreviewGrid({ images, isLoading, onRegenerate }: PreviewGridProp
 
   return (
     <div className="flex-1 flex flex-col gap-4">
+      {/* 複数枚のとき：まとめてレイヤードPSDでDL */}
+      {images.length > 1 && (
+        <button
+          onClick={handleExportLayers}
+          disabled={exportingLayers}
+          className="flex items-center justify-center gap-2 w-full py-2.5 bg-[#1a1a2e] hover:bg-[#2d2d52] disabled:opacity-50 text-white rounded-xl border border-white/10 text-sm font-medium transition"
+        >
+          {exportingLayers ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Layers className="w-4 h-4" />
+          )}
+          {exportingLayers ? "PSD 作成中..." : `全 ${images.length} 枚をレイヤードPSDで保存`}
+        </button>
+      )}
+
       {images.map((url, i) => (
         <div key={i} className="bg-gray-50 dark:bg-gray-900 rounded-xl overflow-hidden">
           <div className="relative aspect-square">

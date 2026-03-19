@@ -88,10 +88,21 @@ export async function POST(request: Request) {
           height: info.height,
         } as ImageData;
 
+        // imageData を root にも設定しないと Photoshop がフラット認識する
         const psdArrayBuffer = writePsd({
           width: info.width,
           height: info.height,
-          children: [{ name: "BannerForge", imageData }],
+          imageData,
+          children: [
+            {
+              name: "Banner",
+              left: 0,
+              top: 0,
+              right: info.width,
+              bottom: info.height,
+              imageData,
+            },
+          ],
         });
         outputBuffer = Buffer.from(psdArrayBuffer);
         contentType = "application/octet-stream";
